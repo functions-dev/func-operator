@@ -20,24 +20,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
-// NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
-
-// FunctionSpec defines the desired state of Function.
-type FunctionSpec struct {
-	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
-	// Important: Run "make" to regenerate code after modifying this file
-
-	// Foo is an example field of Function. Edit function_types.go to remove/update
-	Foo string `json:"foo,omitempty"`
-}
-
-// FunctionStatus defines the observed state of Function.
-type FunctionStatus struct {
-	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
-	// Important: Run "make" to regenerate code after modifying this file
-}
-
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
 
@@ -48,6 +30,24 @@ type Function struct {
 
 	Spec   FunctionSpec   `json:"spec,omitempty"`
 	Status FunctionStatus `json:"status,omitempty"`
+}
+
+// FunctionSpec defines the desired state of Function.
+type FunctionSpec struct {
+	Source FunctionSpecSource `json:"source,omitempty"`
+}
+
+type FunctionSpecSource struct {
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinLength=1
+	RepositoryURL string `json:"repositoryUrl"`
+}
+
+// FunctionStatus defines the observed state of Function.
+type FunctionStatus struct {
+	CliVersion string `json:"cliVersion"`
+
+	Conditions []metav1.Condition `json:"conditions,omitempty"`
 }
 
 // +kubebuilder:object:root=true

@@ -105,8 +105,8 @@ func (m *Manager) GetBinaryPath() (string, error) {
 	return binaryPath, nil
 }
 
-// getCurrentVersion returns the currently installed version by running "func version"
-func (m *Manager) getCurrentVersion(ctx context.Context) (string, error) {
+// GetCurrentVersion returns the currently installed version by running "func version"
+func (m *Manager) GetCurrentVersion(ctx context.Context) (string, error) {
 	binaryPath, err := m.GetBinaryPath()
 	if err != nil {
 		return "", fmt.Errorf("failed to get binary path: %w", err)
@@ -135,7 +135,7 @@ func (m *Manager) checkAndUpdate(ctx context.Context) error {
 	}
 
 	// Get currently installed version by running "func version"
-	currentVersion, err := m.getCurrentVersion(ctx)
+	currentVersion, err := m.GetCurrentVersion(ctx)
 	if err != nil {
 		m.logger.V(1).Info("Failed to get current version, will download latest", "error", err)
 		currentVersion = ""
