@@ -21,6 +21,7 @@ import (
 	"flag"
 	"os"
 	"path/filepath"
+	"time"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
@@ -39,6 +40,7 @@ import (
 
 	functionsdevv1alpha1 "github.com/creydr/func-operator/api/v1alpha1"
 	"github.com/creydr/func-operator/internal/controller"
+	"github.com/creydr/func-operator/internal/funccli"
 	// +kubebuilder:scaffold:imports
 )
 
@@ -63,6 +65,8 @@ func main() {
 	var probeAddr string
 	var secureMetrics bool
 	var enableHTTP2 bool
+	var funcCLIPath string
+	var funcCLICheckInterval time.Duration
 	var tlsOpts []func(*tls.Config)
 	flag.StringVar(&metricsAddr, "metrics-bind-address", "0", "The address the metrics endpoint binds to. "+
 		"Use :8443 for HTTPS or :8080 for HTTP, or leave as 0 to disable the metrics service.")
@@ -81,6 +85,10 @@ func main() {
 	flag.StringVar(&metricsCertKey, "metrics-cert-key", "tls.key", "The name of the metrics server key file.")
 	flag.BoolVar(&enableHTTP2, "enable-http2", false,
 		"If set, HTTP/2 will be enabled for the metrics and webhook servers")
+	flag.StringVar(&funcCLIPath, "func-cli-path", filepath.Join(os.TempDir(), "func-operator", "bin"),
+		"The directory where the func CLI binary will be installed")
+	flag.DurationVar(&funcCLICheckInterval, "func-cli-check-interval", 5*time.Minute,
+		"How often to check for new func CLI versions")
 	opts := zap.Options{
 		Development: true,
 	}
@@ -202,9 +210,18 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Initialize and add func CLI manager
+	funcCLIManager, err := funccli.NewManager(ctrl.Log, funcCLIPath, funcCLICheckInterval)
+	if err != nil {
+		setupLog.Error(err, "unable to create func CLI manager")
+		os.Exit(1)
+	}
+
 	if err := (&controller.FunctionReconciler{
-		Client: mgr.GetClient(),
-		Scheme: mgr.GetScheme(),
+		Client:         mgr.GetClient(),
+		Scheme:         mgr.GetScheme(),
+		Recorder:       mgr.GetEventRecorderFor("functions-controller"),
+		FuncCliManager: funcCLIManager,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "Function")
 		os.Exit(1)
@@ -225,6 +242,11 @@ func main() {
 			setupLog.Error(err, "unable to add webhook certificate watcher to manager")
 			os.Exit(1)
 		}
+	}
+
+	if err := mgr.Add(funcCLIManager); err != nil {
+		setupLog.Error(err, "unable to add func CLI manager to manager")
+		os.Exit(1)
 	}
 
 	if err := mgr.AddHealthzCheck("healthz", healthz.Ping); err != nil {
