@@ -201,6 +201,87 @@ func (_c *MockManager_GetCurrentVersion_Call) RunAndReturn(run func(ctx context.
 	return _c
 }
 
+// Run provides a mock function for the type MockManager
+func (_mock *MockManager) Run(ctx context.Context, dir string, args ...string) (string, error) {
+	var tmpRet mock.Arguments
+	if len(args) > 0 {
+		tmpRet = _mock.Called(ctx, dir, args)
+	} else {
+		tmpRet = _mock.Called(ctx, dir)
+	}
+	ret := tmpRet
+
+	if len(ret) == 0 {
+		panic("no return value specified for Run")
+	}
+
+	var r0 string
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, ...string) (string, error)); ok {
+		return returnFunc(ctx, dir, args...)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, ...string) string); ok {
+		r0 = returnFunc(ctx, dir, args...)
+	} else {
+		r0 = ret.Get(0).(string)
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, ...string) error); ok {
+		r1 = returnFunc(ctx, dir, args...)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// MockManager_Run_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'Run'
+type MockManager_Run_Call struct {
+	*mock.Call
+}
+
+// Run is a helper method to define mock.On call
+//   - ctx context.Context
+//   - dir string
+//   - args ...string
+func (_e *MockManager_Expecter) Run(ctx interface{}, dir interface{}, args ...interface{}) *MockManager_Run_Call {
+	return &MockManager_Run_Call{Call: _e.mock.On("Run",
+		append([]interface{}{ctx, dir}, args...)...)}
+}
+
+func (_c *MockManager_Run_Call) Run(run func(ctx context.Context, dir string, args ...string)) *MockManager_Run_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 []string
+		var variadicArgs []string
+		if len(args) > 2 {
+			variadicArgs = args[2].([]string)
+		}
+		arg2 = variadicArgs
+		run(
+			arg0,
+			arg1,
+			arg2...,
+		)
+	})
+	return _c
+}
+
+func (_c *MockManager_Run_Call) Return(s string, err error) *MockManager_Run_Call {
+	_c.Call.Return(s, err)
+	return _c
+}
+
+func (_c *MockManager_Run_Call) RunAndReturn(run func(ctx context.Context, dir string, args ...string) (string, error)) *MockManager_Run_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // Start provides a mock function for the type MockManager
 func (_mock *MockManager) Start(ctx context.Context) error {
 	ret := _mock.Called(ctx)

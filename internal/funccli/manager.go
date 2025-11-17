@@ -28,7 +28,10 @@ type Manager interface {
 	GetBinaryPath() (string, error)
 	GetCurrentVersion(ctx context.Context) (string, error)
 	EnsureReady(ctx context.Context) error
+	Run(ctx context.Context, dir string, args ...string) (string, error)
 }
+
+var _ Manager = &managerImpl{}
 
 // managerImpl handles periodic checks and downloads of the Knative func CLI binary
 type managerImpl struct {
@@ -114,20 +117,12 @@ func (m *managerImpl) GetBinaryPath() (string, error) {
 
 // GetCurrentVersion returns the currently installed version by running "func version"
 func (m *managerImpl) GetCurrentVersion(ctx context.Context) (string, error) {
-	binaryPath, err := m.GetBinaryPath()
-	if err != nil {
-		return "", fmt.Errorf("failed to get binary path: %w", err)
-	}
-
-	// Run "func version" command
-	// We get the relating knative version, as this is also used in the release overview list from GitHub
-	cmd := exec.CommandContext(ctx, binaryPath, "version", "-v")
-	output, err := cmd.Output()
+	output, err := m.Run(ctx, "", "version", "-v")
 	if err != nil {
 		return "", fmt.Errorf("failed to get version: %w", err)
 	}
 
-	for _, line := range strings.Split(string(output), "\n") {
+	for _, line := range strings.Split(output, "\n") {
 		if strings.HasPrefix(line, "Knative:") {
 			parts := strings.Split(line, " ")
 			if len(parts) == 2 {
@@ -144,6 +139,23 @@ func (m *managerImpl) GetCurrentVersion(ctx context.Context) (string, error) {
 func (m *managerImpl) EnsureReady(ctx context.Context) error {
 	m.logger.Info("Ensuring func CLI is ready")
 	return m.checkAndUpdate(ctx)
+}
+
+func (m *managerImpl) Run(ctx context.Context, dir string, args ...string) (string, error) {
+	bin, err := m.GetBinaryPath()
+	if err != nil {
+		return "", fmt.Errorf("failed to get binary path: %w", err)
+	}
+
+	cmd := exec.CommandContext(ctx, bin, args...)
+	cmd.Dir = dir
+
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return "", fmt.Errorf("failed to run func %s: %w", strings.Join(cmd.Args, " "), err)
+	}
+
+	return string(output), err
 }
 
 // checkAndUpdate checks for a new version and downloads it if available
