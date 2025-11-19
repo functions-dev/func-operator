@@ -12,6 +12,9 @@ NODE_VERSION="v1.34.0"
 REGISTRY_NAME="kind-registry"
 REGISTRY_PORT="5001"
 
+SERVING_VERSION="v1.19.0"
+TEKTON_VERSION="v1.6.0"
+
 header=$'\e[1;33m'
 reset=$'\e[0m'
 
@@ -41,6 +44,8 @@ nodes:
   image: kindest/node:$NODE_VERSION
 - role: worker
   image: kindest/node:$NODE_VERSION
+- role: worker
+  image: kindest/node:$NODE_VERSION
 containerdConfigPatches:
 - |-
   [plugins."io.containerd.grpc.v1.cri".registry.mirrors."localhost:$REGISTRY_PORT"]
@@ -66,6 +71,33 @@ data:
     host: "localhost:$REGISTRY_PORT"
     help: "https://kind.sigs.k8s.io/docs/user/local-registry/"
 EOF
+
+}
+
+function install_tekton() {
+  header_text "Install Tekton"
+  kubectl apply -f https://storage.googleapis.com/tekton-releases/pipeline/previous/${TEKTON_VERSION}/release.yaml
+  kubectl patch configmap feature-flags -n tekton-pipelines --type merge -p '{"data":{"coschedule":"disabled"}}'
+
+  header_text "Waiting for Tekton to be ready..."
+  kubectl wait deployment --all --timeout=-1s --for=condition=Available -n tekton-pipelines
+  kubectl wait deployment --all --timeout=-1s --for=condition=Available -n tekton-pipelines-resolvers
+}
+
+function install_knative_serving() {
+  header_text "Installing Knative Serving..."
+  kubectl apply -f https://github.com/knative/serving/releases/download/knative-${SERVING_VERSION}/serving-crds.yaml
+  kubectl apply -f https://github.com/knative/serving/releases/download/knative-${SERVING_VERSION}/serving-core.yaml
+  kubectl apply -f https://github.com/knative/net-kourier/releases/download/knative-${SERVING_VERSION}/kourier.yaml
+
+  kubectl patch configmap/config-network \
+    --namespace knative-serving \
+    --type merge \
+    --patch '{"data":{"ingress-class":"kourier.ingress.networking.knative.dev"}}'
+
+  header_text "Waiting for Knative Serving to be ready..."
+  kubectl wait deployment --all --timeout=-1s --for=condition=Available -n knative-serving
+  kubectl wait deployment --all --timeout=-1s --for=condition=Available -n kourier-system
 }
 
 if [ "$DELETE_CLUSTER_BEFORE" = "true" ]; then
@@ -75,5 +107,7 @@ fi
 setup_local_registry
 create_kind_cluster
 connect_registry_to_cluster
+install_tekton
+install_knative_serving
 
 header_text "All components installed"
