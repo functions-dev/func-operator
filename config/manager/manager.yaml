@@ -63,6 +63,8 @@ spec:
         args:
           - --leader-elect
           - --health-probe-bind-address=:8081
+          - --disable-func-cli-update=true
+          - --func-cli-path=/func
         image: controller:latest
         imagePullPolicy: Always
         name: manager
@@ -93,7 +95,11 @@ spec:
           requests:
             cpu: 10m
             memory: 64Mi
-        volumeMounts: []
-      volumes: []
+        volumeMounts:
+        - name: git-repos
+          mountPath: /git-repos
+      volumes:
+      - name: git-repos
+        emptyDir: {}
       serviceAccountName: controller-manager
       terminationGracePeriodSeconds: 10

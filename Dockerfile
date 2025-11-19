@@ -23,11 +23,21 @@ COPY internal/ internal/
 # by leaving it empty we can ensure that the container and binary shipped on it will have the same platform.
 RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -a -o manager cmd/main.go
 
+# Temporary until we have the latest features (registry-authfile, ...) in a released func cli version
+FROM golang:1.24 AS func-cli-builder
+ARG TARGETOS
+ARG TARGETARCH
+
+WORKDIR /workspace
+RUN git clone --branch add-registry-authfile-build-option --single-branch --depth 1 https://github.com/creydr/knative-func .
+RUN make build
+
 # Use distroless as minimal base image to package the manager binary
 # Refer to https://github.com/GoogleContainerTools/distroless for more details
 FROM gcr.io/distroless/static:nonroot
 WORKDIR /
 COPY --from=builder /workspace/manager .
+COPY --from=func-cli-builder /workspace/func /func/func
 USER 65532:65532
 
 ENTRYPOINT ["/manager"]
