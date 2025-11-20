@@ -46,6 +46,9 @@ type FunctionReconciler struct {
 // +kubebuilder:rbac:groups=functions.dev,resources=functions,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=functions.dev,resources=functions/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=functions.dev,resources=functions/finalizers,verbs=update
+// +kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups="",resources=persistentvolumeclaims,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=tekton.dev,resources=pipelines;pipelineruns,verbs=get;list;watch;create;update;patch;delete
 
 // Reconcile a Function
 func (r *FunctionReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
@@ -70,8 +73,8 @@ func (r *FunctionReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 	// clone src code
 	repo, err := git.NewRepository(ctx, function.Spec.Source.RepositoryURL, "main")
 	if err != nil {
-		logger.Error(err, "Failed to create setup git repository")
-		return ctrl.Result{}, fmt.Errorf("Failed to create setup git repository: %w", err)
+		logger.Error(err, "failed to setup git repository")
+		return ctrl.Result{}, fmt.Errorf("failed to setup git repository: %w", err)
 	}
 
 	logger.Info("Cloned function", "path", repo.Path())
