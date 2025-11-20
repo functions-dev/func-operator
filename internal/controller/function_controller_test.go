@@ -58,6 +58,9 @@ var _ = Describe("Function Controller", func() {
 						Source: functionsdevv1alpha1.FunctionSpecSource{
 							RepositoryURL: "https://github.com/foo/bar",
 						},
+						Registry: functionsdevv1alpha1.FunctionSpecRegistry{
+							Path: "quay.io/foo/bar",
+						},
 					},
 				}
 				Expect(k8sClient.Create(ctx, resource)).To(Succeed())
