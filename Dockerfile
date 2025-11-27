@@ -23,6 +23,13 @@ COPY internal/ internal/
 # by leaving it empty we can ensure that the container and binary shipped on it will have the same platform.
 RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -a -o manager cmd/main.go
 
+FROM builder AS builder-debug
+# Build with debug symbols for delve
+RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -gcflags="all=-N -l" -o manager-debug cmd/main.go
+# Install Delve
+RUN go install github.com/go-delve/delve/cmd/dlv@latest
+
+
 # Temporary until we have the latest features (registry-authfile, ...) in a released func cli version
 FROM golang:1.24 AS func-cli-builder
 ARG TARGETOS
@@ -32,9 +39,18 @@ WORKDIR /workspace
 RUN git clone --branch main --single-branch --depth 1 https://github.com/knative/func .
 RUN make build
 
+FROM registry.access.redhat.com/ubi9/ubi AS debug
+WORKDIR /
+COPY --from=builder-debug /workspace/manager-debug .
+COPY --from=builder-debug /go/bin/dlv .
+COPY --from=func-cli-builder /workspace/func /func/func
+USER 65532:65532
+
+ENTRYPOINT ["/dlv", "exec", "/manager-debug", "--headless", "--listen=:40000", "--api-version=2", "--accept-multiclient", "--log", "--"]
+
 # Use distroless as minimal base image to package the manager binary
 # Refer to https://github.com/GoogleContainerTools/distroless for more details
-FROM gcr.io/distroless/static:nonroot
+FROM gcr.io/distroless/static:nonroot AS prod
 WORKDIR /
 COPY --from=builder /workspace/manager .
 COPY --from=func-cli-builder /workspace/func /func/func
