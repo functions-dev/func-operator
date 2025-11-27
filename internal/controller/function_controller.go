@@ -113,7 +113,7 @@ func (r *FunctionReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 	}
 
 	// function status update
-	functionImage, err := r.deployedImage(ctx, function)
+	functionImage, err := r.deployedImage(ctx, metadata.Name, function.Namespace)
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to get deployed image of function: %w", err)
 	}
@@ -283,8 +283,8 @@ func (r *FunctionReconciler) isDeployed(ctx context.Context, name, namespace str
 	return true, nil
 }
 
-func (r *FunctionReconciler) deployedImage(ctx context.Context, function *v1alpha1.Function) (string, error) {
-	out, err := r.FuncCliManager.Run(ctx, "", "--namespace", function.Namespace, "describe", function.Name, "--output", "json")
+func (r *FunctionReconciler) deployedImage(ctx context.Context, name, namespace string) (string, error) {
+	out, err := r.FuncCliManager.Run(ctx, "", "--namespace", namespace, "describe", name, "--output", "json")
 	if err != nil {
 		return "", fmt.Errorf("failed to describe function: %w", err)
 	}
