@@ -18,10 +18,13 @@ package controller
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/creydr/func-operator/internal/funccli"
+	fn "github.com/creydr/func-operator/internal/function"
 	"github.com/creydr/func-operator/internal/git"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/equality"
@@ -50,7 +53,10 @@ type FunctionReconciler struct {
 // +kubebuilder:rbac:groups=functions.dev,resources=functions,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=functions.dev,resources=functions/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=functions.dev,resources=functions/finalizers,verbs=update
-// +kubebuilder:rbac:groups="",resources=secrets;persistentvolumeclaims,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups="",resources=secrets;services;persistentvolumeclaims,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups="apps",resources=deployments,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups="serving.knative.dev",resources=services,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups="eventing.knative.dev",resources=triggers,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=tekton.dev,resources=pipelines;pipelineruns,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=rbac.authorization.k8s.io,resources=rolebindings,verbs=get;list;watch;create;update;patch;delete
 
@@ -73,6 +79,59 @@ func (r *FunctionReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 	}
 
 	logger.Info("Reconciling Function", "function", req.NamespacedName)
+
+	// get metadata from repo
+	repo, err := git.NewRepository(ctx, function.Spec.Source.RepositoryURL, "main")
+	if err != nil {
+		return ctrl.Result{}, fmt.Errorf("failed to setup git repository: %w", err)
+	}
+
+	metadata, err := fn.Metadata(repo.Path())
+	if err != nil {
+		return ctrl.Result{}, fmt.Errorf("failed to get function metadata: %w", err)
+	}
+
+	// deploy if needed
+	deployed, err := r.isDeployed(ctx, metadata.Name, function.Namespace)
+	if err != nil {
+		return ctrl.Result{}, fmt.Errorf("failed to check if function is already deployed: %w", err)
+	}
+
+	if deployed {
+		// check middleware for updates and eventually redeploy
+
+		// TODO: middleware check
+		if err = r.deploy(ctx, function, repo); err != nil {
+			return ctrl.Result{}, fmt.Errorf("failed to redeploy function: %w", err)
+		}
+	} else {
+		// simply deploy
+
+		if err = r.deploy(ctx, function, repo); err != nil {
+			return ctrl.Result{}, fmt.Errorf("failed to deploy function: %w", err)
+		}
+	}
+
+	// function status update
+	functionImage, err := r.deployedImage(ctx, function)
+	if err != nil {
+		return ctrl.Result{}, fmt.Errorf("failed to get deployed image of function: %w", err)
+	}
+
+	function.Status.Name = metadata.Name
+	function.Status.Runtime = metadata.Runtime
+	function.Status.DeployedImage = functionImage
+	function.Status.MiddlewareVersion = "TODO"
+
+	if err = r.Update(ctx, function); err != nil {
+		return ctrl.Result{}, fmt.Errorf("failed to update function: %w", err)
+	}
+
+	return ctrl.Result{}, nil
+}
+
+func (r *FunctionReconciler) setupPipelineRBAC(ctx context.Context, function *v1alpha1.Function) error {
+	logger := logf.FromContext(ctx)
 
 	logger.Info("Create rolebinding for deploy-function role")
 	expectedRoleBinding := &rbacv1.RoleBinding{
@@ -101,32 +160,78 @@ func (r *FunctionReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		},
 	}
 	foundRoleBinding := &rbacv1.RoleBinding{}
-	err = r.Get(ctx, types.NamespacedName{Name: expectedRoleBinding.Name, Namespace: expectedRoleBinding.Namespace}, foundRoleBinding)
+	err := r.Get(ctx, types.NamespacedName{Name: expectedRoleBinding.Name, Namespace: expectedRoleBinding.Namespace}, foundRoleBinding)
 	if err != nil {
 		if apierrors.IsNotFound(err) {
 			err = r.Create(ctx, expectedRoleBinding)
 			if err != nil {
-				return ctrl.Result{}, fmt.Errorf("failed to create role binding for deploy-function role: %w", err)
+				return fmt.Errorf("failed to create role binding for deploy-function role: %w", err)
 			}
+			logger.Info("Created role binding for deploy-function role")
+			return nil
 		}
-		return ctrl.Result{}, fmt.Errorf("failed to check if deploy-function role binding already exists: %w", err)
+
+		return fmt.Errorf("failed to check if deploy-function role binding already exists: %w", err)
 	} else {
 		if !equality.Semantic.DeepDerivative(expectedRoleBinding, foundRoleBinding) {
 			err = r.Update(ctx, foundRoleBinding)
 			if err != nil {
-				return ctrl.Result{}, fmt.Errorf("failed to update deploy-function role binding: %w", err)
+				return fmt.Errorf("failed to update deploy-function role binding: %w", err)
 			}
+
+			logger.Info("Updated deploy-function role binding")
+			return nil
 		}
+
+		logger.Info("Role binding already exists and is up to date. No need to update")
 	}
 
-	// clone src code
-	repo, err := git.NewRepository(ctx, function.Spec.Source.RepositoryURL, "main")
+	return nil
+}
+
+func (r *FunctionReconciler) persistRegistryAuthSecret(ctx context.Context, function *v1alpha1.Function) (string, error) {
+	logger := logf.FromContext(ctx)
+
+	logger.Info("Persist registry auth secret temporarily")
+
+	authSecret := &v1.Secret{}
+	err := r.Get(ctx, types.NamespacedName{Name: function.Spec.Registry.AuthSecretRef.Name, Namespace: function.Namespace}, authSecret)
 	if err != nil {
-		logger.Error(err, "failed to setup git repository")
-		return ctrl.Result{}, fmt.Errorf("failed to setup git repository: %w", err)
+		logger.Error(err, "Failed to get registry auth secret", "secret", function.Spec.Registry.AuthSecretRef.Name, "namespace", function.Namespace)
+		return "", fmt.Errorf("failed to get registry auth secret: %w", err)
 	}
 
-	logger.Info("Cloned function", "path", repo.Path())
+	if authSecret.Type != v1.SecretTypeDockerConfigJson {
+		return "", fmt.Errorf("invalid registry auth secret type, must be of type %s", v1.SecretTypeDockerConfigJson)
+	}
+
+	if authSecret.Data[v1.DockerConfigJsonKey] == nil {
+		return "", fmt.Errorf("invalid registry auth secret data, must contain key %s", v1.DockerConfigJsonKey)
+	}
+
+	// persist secret temporarily
+	authFile, err := os.CreateTemp("", "auth-file-*.json")
+	if err != nil {
+		logger.Error(err, "Failed to create temp auth file")
+		return "", fmt.Errorf("failed to create temp auth file: %w", err)
+	}
+	defer authFile.Close()
+
+	_, err = authFile.Write(authSecret.Data[v1.DockerConfigJsonKey])
+	if err != nil {
+		logger.Error(err, "Failed to write temp auth file")
+		return "", fmt.Errorf("failed to write temp auth file: %w", err)
+	}
+
+	return authFile.Name(), nil
+}
+
+func (r *FunctionReconciler) deploy(ctx context.Context, function *v1alpha1.Function, repo *git.Repository) error {
+	logger := logf.FromContext(ctx)
+
+	if err := r.setupPipelineRBAC(ctx, function); err != nil {
+		return fmt.Errorf("failed to setup pipeline RBAC: %w", err)
+	}
 
 	// deploy function
 	deployArgs := []string{
@@ -142,60 +247,64 @@ func (r *FunctionReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 	}
 
 	if function.Spec.Registry.AuthSecretRef != nil && function.Spec.Registry.AuthSecretRef.Name != "" {
-		// we have an registry auth secret referenced -> use this for func deploy
-		authSecret := &v1.Secret{}
-		err := r.Get(ctx, types.NamespacedName{Name: function.Spec.Registry.AuthSecretRef.Name, Namespace: req.Namespace}, authSecret)
+		// we have a registry auth secret referenced -> use this for func deploy
+		authFile, err := r.persistRegistryAuthSecret(ctx, function)
 		if err != nil {
-			logger.Error(err, "Failed to get registry auth secret", "secret", function.Spec.Registry.AuthSecretRef.Name, "namespace", req.Namespace)
-			return ctrl.Result{}, fmt.Errorf("failed to get registry auth secret: %w", err)
+			return fmt.Errorf("failed to persist registry auth secret temporarily: %w", err)
 		}
 
-		if authSecret.Type != v1.SecretTypeDockerConfigJson {
-			return ctrl.Result{}, fmt.Errorf("invalid registry auth secret type, must be of type %s", v1.SecretTypeDockerConfigJson)
-		}
+		defer os.Remove(authFile)
 
-		if authSecret.Data[v1.DockerConfigJsonKey] == nil {
-			return ctrl.Result{}, fmt.Errorf("invalid registry auth secret data, must contain key %s", v1.DockerConfigJsonKey)
-		}
-
-		// persist secret temporarily
-		authFile, err := os.CreateTemp("", "auth-file-*.json")
-		if err != nil {
-			logger.Error(err, "Failed to create temp auth file")
-			return ctrl.Result{}, fmt.Errorf("failed to create temp auth file: %w", err)
-		}
-		defer os.Remove(authFile.Name())
-		defer authFile.Close()
-
-		_, err = authFile.Write(authSecret.Data[v1.DockerConfigJsonKey])
-		if err != nil {
-			logger.Error(err, "Failed to write temp auth file")
-			return ctrl.Result{}, fmt.Errorf("failed to write temp auth file: %w", err)
-		}
-
-		deployArgs = append(deployArgs, "--registry-authfile", authFile.Name())
+		deployArgs = append(deployArgs, "--registry-authfile", authFile)
 	}
 
+	logger.Info("Deploying function", "function", function.Name, "namespace", function.Namespace, "deployArgs", deployArgs)
 	out, err := r.FuncCliManager.Run(ctx, repo.Path(), deployArgs...)
 	if err != nil {
 		logger.Error(err, "Failed to deploy function", "output", out)
-		return ctrl.Result{}, fmt.Errorf("failed to deploy function: %w", err)
+		return fmt.Errorf("failed to deploy function: %w", err)
 	}
+
 	logger.Info("function deployed successfully", "output", out)
 
-	cliVersion, err := r.FuncCliManager.GetCurrentVersion(ctx)
+	return nil
+}
+
+func (r *FunctionReconciler) isDeployed(ctx context.Context, name, namespace string) (bool, error) {
+	out, err := r.FuncCliManager.Run(ctx, "", "--namespace", namespace, "describe", name)
 	if err != nil {
-		logger.Error(err, "Failed to get function version")
-		return ctrl.Result{}, fmt.Errorf("failed to get func cli version: %w", err)
+		if strings.Contains(out, "not found") || strings.Contains(out, "no describe function") {
+			return false, nil
+		}
+
+		return false, fmt.Errorf("failed to describe function: %w", err)
 	}
 
-	function.Status.CliVersion = cliVersion
-	if err := r.Status().Update(ctx, function); err != nil {
-		logger.Error(err, "Failed to update Function status")
-		return ctrl.Result{}, err
+	return true, nil
+}
+
+func (r *FunctionReconciler) deployedImage(ctx context.Context, function *v1alpha1.Function) (string, error) {
+	out, err := r.FuncCliManager.Run(ctx, "", "--namespace", function.Namespace, "describe", function.Name, "--output", "json")
+	if err != nil {
+		return "", fmt.Errorf("failed to describe function: %w", err)
 	}
 
-	return ctrl.Result{}, nil
+	result := make(map[string]interface{})
+	if err = json.Unmarshal([]byte(out), &result); err != nil {
+		return "", fmt.Errorf("failed to unmarshal describe output: %w", err)
+	}
+
+	image, ok := result["image"]
+	if !ok {
+		return "", fmt.Errorf("failed to find image in describe output")
+	}
+
+	sImage, ok := image.(string)
+	if !ok {
+		return "", fmt.Errorf("failed to convert image from describe output to string")
+	}
+
+	return sImage, nil
 }
 
 // SetupWithManager sets up the controller with the Manager.
