@@ -171,7 +171,7 @@ func (m *managerImpl) Run(ctx context.Context, dir string, args ...string) (stri
 
 	output, err := cmd.CombinedOutput()
 	if err != nil {
-		return string(output), fmt.Errorf("failed to run func %s: %w", strings.Join(cmd.Args, " "), err)
+		return string(output), fmt.Errorf("failed to run func %s: %q. %w", strings.Join(cmd.Args, " "), output, err)
 	}
 
 	return string(output), nil
