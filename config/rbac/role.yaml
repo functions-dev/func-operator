@@ -97,6 +97,7 @@ rules:
   resources:
   - pipelineruns
   - pipelines
+  - taskruns
   verbs:
   - create
   - delete
