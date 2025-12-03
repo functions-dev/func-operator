@@ -270,14 +270,20 @@ func (m *managerImpl) downloadAndInstall(ctx context.Context, release *GitHubRel
 
 	// Make it executable
 	if err := os.Chmod(tmpFile, 0755); err != nil {
-		os.Remove(tmpFile)
+		if err := os.Remove(tmpFile); err != nil {
+			m.logger.Error(err, "Failed to remove tmp file while file could not be marked as executable", "file", tmpFile)
+		}
+
 		return fmt.Errorf("failed to make binary executable: %w", err)
 	}
 
 	// Atomic rename to final location
 	finalPath := filepath.Join(m.installPath, binaryName)
 	if err := os.Rename(tmpFile, finalPath); err != nil {
-		os.Remove(tmpFile)
+		if err := os.Remove(tmpFile); err != nil {
+			m.logger.Error(err, "Failed to remove tmp file while file could not be renamed", "file", tmpFile)
+		}
+
 		return fmt.Errorf("failed to install binary: %w", err)
 	}
 
@@ -285,7 +291,7 @@ func (m *managerImpl) downloadAndInstall(ctx context.Context, release *GitHubRel
 }
 
 // downloadFile downloads a file from the given URL
-func (m *managerImpl) downloadFile(ctx context.Context, url, filepath string) error {
+func (m *managerImpl) downloadFile(ctx context.Context, url, path string) error {
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
 		return err
@@ -301,7 +307,7 @@ func (m *managerImpl) downloadFile(ctx context.Context, url, filepath string) er
 		return fmt.Errorf("download failed with status %d", resp.StatusCode)
 	}
 
-	out, err := os.Create(filepath)
+	out, err := os.Create(path)
 	if err != nil {
 		return err
 	}

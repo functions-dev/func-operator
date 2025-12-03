@@ -36,6 +36,10 @@ linters:
           - dupl
           - lll
         path: internal/*
+      # ignore errcheck in defer
+      - linters:
+          - errcheck
+        source: "^\\s*defer\\s+"
     paths:
       - third_party$
       - builtin$
