@@ -35,8 +35,14 @@ FROM golang:1.24 AS func-cli-builder
 ARG TARGETOS
 ARG TARGETARCH
 
+ARG FUNC_CLI_GH_REPO=knative/func
+ARG FUNC_CLI_BRANCH=main
+
+# workaround to invalidate cache when func cli repo got updated
+ADD https://api.github.com/repos/${FUNC_CLI_GH_REPO}/git/refs/heads/${FUNC_CLI_BRANCH} version.json
+
 WORKDIR /workspace
-RUN git clone --branch main --single-branch --depth 1 https://github.com/knative/func .
+RUN git clone --branch ${FUNC_CLI_BRANCH} --single-branch --depth 1 https://github.com/${FUNC_CLI_GH_REPO} .
 RUN make build
 
 FROM registry.access.redhat.com/ubi9/ubi AS debug
