@@ -9,7 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
+	goruntime "runtime"
 	"strings"
 	"sync"
 	"time"
@@ -309,7 +309,7 @@ func (m *managerImpl) downloadAndInstall(ctx context.Context, release *GitHubRel
 	}
 
 	if downloadURL == "" {
-		return fmt.Errorf("no suitable asset found for %s/%s", runtime.GOOS, runtime.GOARCH)
+		return fmt.Errorf("no suitable asset found for %s/%s", goruntime.GOOS, goruntime.GOARCH)
 	}
 
 	m.logger.Info("Downloading func CLI", "url", downloadURL, "asset", assetName)
@@ -371,8 +371,8 @@ func (m *managerImpl) downloadFile(ctx context.Context, url, path string) error 
 
 // getAssetName returns the appropriate asset name for the current platform
 func (m *managerImpl) getAssetName() string {
-	goos := runtime.GOOS
-	goarch := runtime.GOARCH
+	goos := goruntime.GOOS
+	goarch := goruntime.GOARCH
 
 	// Knative func uses naming like: func_linux_amd64
 	return fmt.Sprintf("func_%s_%s", goos, goarch)
