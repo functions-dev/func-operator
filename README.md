@@ -127,13 +127,13 @@ For debugging the operator with [Delve](https://github.com/go-delve/delve), use 
 
 ```bash
 # Build the debug image (includes Delve debugger and debug symbols)
-make docker-debugger-build IMG=<your-registry>/func-operator:debug
+make docker-build-debugger IMAGE_TAG_BASE=<your-registry>/func-operator
 
 # Push the debug image
-make docker-push IMG=<your-registry>/func-operator:debug
+make docker-push-debugger IMAGE_TAG_BASE=<your-registry>/func-operator
 
 # Deploy the operator in debug mode
-make deploy-debugger IMG=<your-registry>/func-operator:debug
+make deploy-debugger IMAGE_TAG_BASE=<your-registry>/func-operator
 ```
 
 The debug deployment runs the operator under Delve in headless mode, listening on port 40000. To connect your debugger:

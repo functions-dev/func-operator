@@ -34,6 +34,8 @@ BUNDLE_METADATA_OPTS ?= $(BUNDLE_CHANNELS) $(BUNDLE_DEFAULT_CHANNEL)
 # functions.dev/func-operator-bundle:$VERSION and functions.dev/func-operator-catalog:$VERSION.
 IMAGE_TAG_BASE ?= functions.dev/func-operator
 
+DEBUG_IMAGE_TAG_BASE ?= $(IMAGE_TAG_BASE)-debug
+
 # BUNDLE_IMG defines the image:tag used for the bundle.
 # You can use it as an arg. (E.g make bundle-build BUNDLE_IMG=<some-registry>/<project-name-bundle>:<tag>)
 BUNDLE_IMG ?= $(IMAGE_TAG_BASE)-bundle:v$(VERSION)
@@ -54,6 +56,7 @@ endif
 OPERATOR_SDK_VERSION ?= v1.41.1
 # Image URL to use all building/pushing image targets
 IMG ?= $(IMAGE_TAG_BASE):$(VERSION)
+DEBUG_IMG ?= $(DEBUG_IMAGE_TAG_BASE):v$(VERSION)
 
 # Get the currently used golang install path (in GOPATH/bin, unless GOBIN is set)
 ifeq (,$(shell go env GOBIN))
@@ -173,13 +176,17 @@ run: manifests generate fmt vet ## Run a controller from your host.
 docker-build: ## Build docker image with the manager.
 	$(CONTAINER_TOOL) build -t ${IMG} --target prod .
 
-.PHONY: docker-debugger-build
-docker-debugger-build: ## Build docker debug image with the manager.
-	$(CONTAINER_TOOL) build -t ${IMG} --target debug .
+.PHONY: docker-build-debugger
+docker-build-debugger: ## Build docker debug image with the manager.
+	$(CONTAINER_TOOL) build -t ${DEBUG_IMG} --target debug .
 
 .PHONY: docker-push
 docker-push: ## Push docker image with the manager.
 	$(CONTAINER_TOOL) push ${IMG}
+
+.PHONY: docker-push-debugger
+docker-push-debugger: ## Push debugger docker image with the manager.
+	$(CONTAINER_TOOL) push ${DEBUG_IMG}
 
 # PLATFORMS defines the target platforms for the manager image be built to provide support to multiple
 # architectures. (i.e. make docker-buildx IMG=myregistry/mypoperator:0.0.1). To use this option you need to:
@@ -224,8 +231,8 @@ deploy: manifests kustomize ## Deploy controller to the K8s cluster specified in
 	$(KUSTOMIZE) build config/default | $(KUBECTL) apply -f -
 
 .PHONY: deploy-debugger
-deploy-debugger: manifests kustomize ## Deploy controller to the K8s cluster specified in ~/.kube/config.
-	cd config/manager && $(KUSTOMIZE) edit set image controller=${IMG}
+deploy-debugger: manifests kustomize ## Deploy debug controller to the K8s cluster specified in ~/.kube/config.
+	cd config/manager && $(KUSTOMIZE) edit set image controller=${DEBUG_IMG}
 	$(KUSTOMIZE) build config/debug | $(KUBECTL) apply -f -
 
 .PHONY: undeploy
