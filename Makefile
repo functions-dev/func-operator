@@ -3,7 +3,10 @@
 # To re-generate a bundle for another specific version without changing the standard setup, you can:
 # - use the VERSION as arg of the bundle target (e.g make bundle VERSION=0.0.2)
 # - use environment variables to overwrite this value (e.g export VERSION=0.0.2)
-VERSION ?= 0.0.1
+# Default to version + git SHA + timestamp for development to ensure unique image tags
+GIT_SHA := $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
+BUILD_TIMESTAMP := $(shell date +"%Y%m%d%H%M%S")
+VERSION ?= 0.0.1-$(GIT_SHA)-$(BUILD_TIMESTAMP)
 
 # CHANNELS define the bundle channels used in the bundle.
 # Add a new line here if you would like to change its default config. (E.g CHANNELS = "candidate,fast,stable")
