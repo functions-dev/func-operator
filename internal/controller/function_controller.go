@@ -36,6 +36,7 @@ import (
 	funcfn "knative.dev/func/pkg/functions"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
@@ -332,6 +333,9 @@ func (r *FunctionReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		For(&v1alpha1.Function{}).
 		WithEventFilter(predicate.GenerationChangedPredicate{}). // only reconcile when the spec changed (e.g. not on status updates)
 		Named("function").
+		WithOptions(controller.Options{
+			MaxConcurrentReconciles: 100, // TODO: find a good value
+		}).
 		Complete(r)
 }
 
