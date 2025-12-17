@@ -24,10 +24,9 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/creydr/func-operator/test/utils"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-
-	"github.com/creydr/func-operator/test/utils"
 )
 
 // namespace where the project is deployed in

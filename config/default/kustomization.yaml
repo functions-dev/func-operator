@@ -24,7 +24,7 @@ resources:
 # [CERTMANAGER] To enable cert-manager, uncomment all sections with 'CERTMANAGER'. 'WEBHOOK' components are required.
 - ../certmanager
 # [PROMETHEUS] To enable prometheus monitor, uncomment all sections with 'PROMETHEUS'.
-#- ../prometheus
+- ../prometheus
 # [METRICS] Expose the controller manager metrics service.
 - metrics_service.yaml
 # [NETWORK POLICY] Protect the /metrics endpoint and Webhook Server with NetworkPolicy.
@@ -35,7 +35,7 @@ resources:
 
 # Uncomment the patches line if you enable Metrics
 patches:
-# [METRICS] The following patch will enable the metrics endpoint using HTTPS and the port :8443.
+# [METRICS] The following patch will enable the metrics endpoint using HTTP and the port :8080.
 # More info: https://book.kubebuilder.io/reference/metrics
 - path: manager_metrics_patch.yaml
   target:
@@ -75,48 +75,48 @@ replacements:
          delimiter: '.'
          index: 0
          create: true
-#     - select: # Uncomment the following to set the Service name for TLS config in Prometheus ServiceMonitor
-#         kind: ServiceMonitor
-#         group: monitoring.coreos.com
-#         version: v1
-#         name: controller-manager-metrics-monitor
-#       fieldPaths:
-#         - spec.endpoints.0.tlsConfig.serverName
-#       options:
-#         delimiter: '.'
-#         index: 0
-#         create: true
-#
-# - source:
-#     kind: Service
-#     version: v1
-#     name: controller-manager-metrics-service
-#     fieldPath: metadata.namespace
-#   targets:
-#     - select:
-#         kind: Certificate
-#         group: cert-manager.io
-#         version: v1
-#         name: metrics-certs
-#       fieldPaths:
-#         - spec.dnsNames.0
-#         - spec.dnsNames.1
-#       options:
-#         delimiter: '.'
-#         index: 1
-#         create: true
-#     - select: # Uncomment the following to set the Service namespace for TLS in Prometheus ServiceMonitor
-#         kind: ServiceMonitor
-#         group: monitoring.coreos.com
-#         version: v1
-#         name: controller-manager-metrics-monitor
-#       fieldPaths:
-#         - spec.endpoints.0.tlsConfig.serverName
-#       options:
-#         delimiter: '.'
-#         index: 1
-#         create: true
-#
+     - select: # Uncomment the following to set the Service name for TLS config in Prometheus ServiceMonitor
+         kind: ServiceMonitor
+         group: monitoring.coreos.com
+         version: v1
+         name: controller-manager-metrics-monitor
+       fieldPaths:
+         - spec.endpoints.0.tlsConfig.serverName
+       options:
+         delimiter: '.'
+         index: 0
+         create: true
+
+ - source:
+     kind: Service
+     version: v1
+     name: controller-manager-metrics-service
+     fieldPath: metadata.namespace
+   targets:
+     - select:
+         kind: Certificate
+         group: cert-manager.io
+         version: v1
+         name: metrics-certs
+       fieldPaths:
+         - spec.dnsNames.0
+         - spec.dnsNames.1
+       options:
+         delimiter: '.'
+         index: 1
+         create: true
+     - select: # Uncomment the following to set the Service namespace for TLS in Prometheus ServiceMonitor
+         kind: ServiceMonitor
+         group: monitoring.coreos.com
+         version: v1
+         name: controller-manager-metrics-monitor
+       fieldPaths:
+         - spec.endpoints.0.tlsConfig.serverName
+       options:
+         delimiter: '.'
+         index: 1
+         create: true
+
  - source: # Uncomment the following block if you have any webhook
      kind: Service
      version: v1
