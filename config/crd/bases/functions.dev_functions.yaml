@@ -67,10 +67,13 @@ spec:
                 type: object
               source:
                 properties:
+                  reference:
+                    type: string
                   repositoryUrl:
                     minLength: 1
                     type: string
                 required:
+                - reference
                 - repositoryUrl
                 type: object
             type: object

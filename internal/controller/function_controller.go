@@ -84,12 +84,17 @@ func (r *FunctionReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 
 	logger.Info("Reconciling Function", "function", req.NamespacedName)
 
-	// get metadata from repo
-	repo, err := r.GitManager.CloneRepository(ctx, function.Spec.Source.RepositoryURL, "main")
+	// checkout repo
+	branchReference := "main"
+	if function.Spec.Source.Reference != "" {
+		branchReference = function.Spec.Source.Reference
+	}
+	repo, err := r.GitManager.CloneRepository(ctx, function.Spec.Source.RepositoryURL, branchReference)
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to setup git repository: %w", err)
 	}
 
+	// get metadata from repo
 	metadata, err := fn.Metadata(repo.Path())
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to get function metadata: %w", err)
