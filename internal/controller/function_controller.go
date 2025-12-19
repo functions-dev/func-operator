@@ -36,6 +36,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
@@ -43,6 +44,8 @@ import (
 	rbacv1 "k8s.io/api/rbac/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 )
+
+const functionFinalizer = "function.functions.dev/finalizer"
 
 // FunctionReconciler reconciles a Function object
 type FunctionReconciler struct {
@@ -82,8 +85,6 @@ func (r *FunctionReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		return ctrl.Result{}, err
 	}
 
-	logger.Info("Reconciling Function", "function", req.NamespacedName)
-
 	// checkout repo
 	branchReference := "main"
 	if function.Spec.Source.Reference != "" {
@@ -100,6 +101,45 @@ func (r *FunctionReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to get function metadata: %w", err)
 	}
+
+	if !controllerutil.ContainsFinalizer(function, functionFinalizer) {
+		logger.Info("Adding Finalizer for Function")
+		if ok := controllerutil.AddFinalizer(function, functionFinalizer); !ok {
+			return ctrl.Result{}, fmt.Errorf("failed to add finalizer for function: %w", err)
+		}
+
+		if err = r.Update(ctx, function); err != nil {
+			return ctrl.Result{}, fmt.Errorf("failed to add finalizer for function: %w", err)
+		}
+	}
+
+	// Check if the Function instance is marked to be deleted, which is
+	// indicated by the deletion timestamp being set.
+	if function.GetDeletionTimestamp() != nil {
+		if controllerutil.ContainsFinalizer(function, functionFinalizer) {
+			logger.Info("Performing Finalizer Operations for Function before delete CR")
+
+			// TODO: maybe set some status conditions marking the function as degraded
+
+			// Perform all operations required before removing the finalizer and allow
+			// the Kubernetes API to remove the custom resource.
+			if err := r.Finalize(ctx, metadata.Name, function.Namespace); err != nil {
+				return ctrl.Result{}, fmt.Errorf("failed to perform finalizer for function: %w", err)
+			}
+
+			logger.Info("Removing Finalizer for Function after successfully perform the operations")
+			if ok := controllerutil.RemoveFinalizer(function, functionFinalizer); !ok {
+				return ctrl.Result{}, fmt.Errorf("failed to remove finalizer for function")
+			}
+
+			if err := r.Update(ctx, function); err != nil {
+				return ctrl.Result{}, fmt.Errorf("failed to remove finalizer for function: %w", err)
+			}
+		}
+		return ctrl.Result{}, nil
+	}
+
+	logger.Info("Reconciling Function", "function", req.NamespacedName)
 
 	// deploy if needed
 	deployed, err := r.isDeployed(ctx, metadata.Name, function.Namespace)
@@ -335,4 +375,13 @@ func (r *FunctionReconciler) isMiddlewareLatest(ctx context.Context, metadata fu
 	}
 
 	return latestMiddleware == functionMiddleware, nil
+}
+
+func (r *FunctionReconciler) Finalize(ctx context.Context, name, namespace string) error {
+	err := r.FuncCliManager.Delete(ctx, name, namespace)
+	if err != nil {
+		return fmt.Errorf("failed to finalize function: %w", err)
+	}
+
+	return nil
 }

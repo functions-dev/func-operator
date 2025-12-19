@@ -27,10 +27,12 @@ import (
 	. "github.com/onsi/gomega"
 	"github.com/stretchr/testify/mock"
 	"gopkg.in/yaml.v3"
+	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/record"
 	"knative.dev/func/pkg/functions"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	functionsdevv1alpha1 "github.com/creydr/func-operator/api/v1alpha1"
@@ -64,8 +66,20 @@ var _ = Describe("Function Controller", func() {
 			err := k8sClient.Get(ctx, typeNamespacedName, resource)
 			Expect(err).NotTo(HaveOccurred())
 
+			By("Remove finalizer to allow deletion")
+			if controllerutil.ContainsFinalizer(resource, functionFinalizer) {
+				controllerutil.RemoveFinalizer(resource, functionFinalizer)
+				Expect(k8sClient.Update(ctx, resource)).To(Succeed())
+			}
+
 			By("Cleanup the specific resource instance Function")
 			Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
+
+			By("Wait for resource to be deleted")
+			Eventually(func() bool {
+				err := k8sClient.Get(ctx, typeNamespacedName, resource)
+				return errors.IsNotFound(err)
+			}).Should(BeTrue())
 		})
 
 		type reconcileTestCase struct {
