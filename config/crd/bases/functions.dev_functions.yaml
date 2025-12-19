@@ -73,7 +73,6 @@ spec:
                     minLength: 1
                     type: string
                 required:
-                - reference
                 - repositoryUrl
                 type: object
             type: object

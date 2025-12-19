@@ -44,6 +44,7 @@ type FunctionSpecSource struct {
 	// +kubebuilder:validation:MinLength=1
 	RepositoryURL string `json:"repositoryUrl"`
 
+	// +kubebuilder:validation:Optional
 	Reference string `json:"reference"`
 }
 
