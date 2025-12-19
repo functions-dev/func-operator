@@ -25,6 +25,8 @@ import (
 	"time"
 
 	"github.com/creydr/func-operator/internal/git"
+	"github.com/creydr/func-operator/internal/monitoring"
+
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
@@ -56,6 +58,8 @@ func init() {
 
 	utilruntime.Must(functionsdevv1alpha1.AddToScheme(scheme))
 	// +kubebuilder:scaffold:scheme
+
+	monitoring.RegisterMetrics()
 }
 
 // nolint:gocyclo

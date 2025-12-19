@@ -14,7 +14,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/creydr/func-operator/internal/monitoring"
 	"github.com/go-logr/logr"
+	"github.com/prometheus/client_golang/prometheus"
 	funcfn "knative.dev/func/pkg/functions"
 )
 
@@ -207,6 +209,9 @@ func (m *managerImpl) Describe(ctx context.Context, name, namespace string) (fun
 }
 
 func (m *managerImpl) Deploy(ctx context.Context, repoPath string, namespace string, opts DeployOptions) error {
+	timer := prometheus.NewTimer(monitoring.DeployDuration)
+	defer timer.ObserveDuration()
+
 	deployArgs := []string{
 		"deploy",
 		"--remote",

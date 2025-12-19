@@ -7,8 +7,10 @@ import (
 	"os"
 	"strings"
 
+	"github.com/creydr/func-operator/internal/monitoring"
 	"github.com/go-git/go-git/v6"
 	"github.com/go-git/go-git/v6/plumbing"
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 const (
@@ -26,6 +28,9 @@ func NewManager() Manager {
 type managerImpl struct{}
 
 func (*managerImpl) CloneRepository(ctx context.Context, repoUrl, reference string) (*Repository, error) {
+	timer := prometheus.NewTimer(monitoring.GitCloneDuration)
+	defer timer.ObserveDuration()
+
 	url, err := neturl.Parse(repoUrl)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse repository URL: %w", err)
