@@ -31,7 +31,7 @@ func (*managerImpl) CloneRepository(ctx context.Context, repoUrl, reference stri
 		return nil, fmt.Errorf("failed to parse repository URL: %w", err)
 	}
 
-	pattern := fmt.Sprintf("%s/%s/%s", url.Host, strings.TrimSuffix(url.Path, ".git"), reference)
+	pattern := fmt.Sprintf("%s-%s-%s", url.Host, strings.ReplaceAll(strings.TrimSuffix(url.Path, ".git"), "/", "-"), reference)
 	targetDir, err := os.MkdirTemp(cloneBaseDir, pattern)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create temporary directory: %w", err)
