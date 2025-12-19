@@ -93,6 +93,7 @@ func (r *FunctionReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to setup git repository: %w", err)
 	}
+	defer repo.Cleanup()
 
 	// get metadata from repo
 	metadata, err := fn.Metadata(repo.Path())

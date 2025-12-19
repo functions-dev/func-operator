@@ -18,12 +18,15 @@ package controller
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 
 	"github.com/creydr/func-operator/internal/funccli"
 	"github.com/creydr/func-operator/internal/git"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"github.com/stretchr/testify/mock"
+	"gopkg.in/yaml.v3"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/record"
@@ -111,7 +114,7 @@ var _ = Describe("Function Controller", func() {
 						Builder:  "s2i",
 					}).Return(nil)
 
-					gitMock.EXPECT().CloneRepository(mock.Anything, "https://github.com/foo/bar", "my-branch").Return(&git.Repository{CloneDir: "testdata/foo-bar"}, nil)
+					gitMock.EXPECT().CloneRepository(mock.Anything, "https://github.com/foo/bar", "my-branch").Return(createTmpGitRepo(functions.Function{Name: "func-go"}), nil)
 				},
 			}),
 			Entry("should skip deploy when middleware already up to date", reconcileTestCase{
@@ -125,7 +128,7 @@ var _ = Describe("Function Controller", func() {
 					funcMock.EXPECT().GetLatestMiddlewareVersion(mock.Anything, mock.Anything, mock.Anything).Return("v1.0.0", nil)
 					funcMock.EXPECT().GetMiddlewareVersion(mock.Anything, functionName, resourceNamespace).Return("v1.0.0", nil)
 
-					gitMock.EXPECT().CloneRepository(mock.Anything, "https://github.com/foo/bar", "my-branch").Return(&git.Repository{CloneDir: "testdata/foo-bar"}, nil)
+					gitMock.EXPECT().CloneRepository(mock.Anything, "https://github.com/foo/bar", "my-branch").Return(createTmpGitRepo(functions.Function{Name: "func-go"}), nil)
 				},
 			}),
 			Entry("should use main as default branch", reconcileTestCase{
@@ -146,7 +149,7 @@ var _ = Describe("Function Controller", func() {
 					funcMock.EXPECT().GetLatestMiddlewareVersion(mock.Anything, mock.Anything, mock.Anything).Return("v1.0.0", nil)
 					funcMock.EXPECT().GetMiddlewareVersion(mock.Anything, functionName, resourceNamespace).Return("v1.0.0", nil)
 
-					gitMock.EXPECT().CloneRepository(mock.Anything, "https://github.com/foo/bar", "main").Return(&git.Repository{CloneDir: "testdata/foo-bar"}, nil)
+					gitMock.EXPECT().CloneRepository(mock.Anything, "https://github.com/foo/bar", "main").Return(createTmpGitRepo(functions.Function{Name: "func-go"}), nil)
 				},
 			}),
 		)
@@ -163,4 +166,20 @@ func createFunctionResource(name, namespace string, spec functionsdevv1alpha1.Fu
 	}
 
 	return k8sClient.Create(ctx, &resource)
+}
+
+func createTmpGitRepo(function functions.Function) *git.Repository {
+	tempDir, err := os.MkdirTemp("", function.Name)
+	Expect(err).NotTo(HaveOccurred())
+
+	funcYamlPath := filepath.Join(tempDir, "func.yaml")
+	f, err := yaml.Marshal(function)
+	Expect(err).NotTo(HaveOccurred())
+
+	err = os.WriteFile(funcYamlPath, f, 0644)
+	Expect(err).NotTo(HaveOccurred())
+
+	return &git.Repository{
+		CloneDir: tempDir,
+	}
 }
