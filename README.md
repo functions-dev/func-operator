@@ -46,6 +46,8 @@ metadata:
 spec:
   source:
     repositoryUrl: https://github.com/your-org/your-function.git
+    authSecretRef:
+      name: git-credentials
   registry:
     path: quay.io/your-username/my-function
     authSecretRef:
@@ -81,6 +83,48 @@ kubectl create secret docker-registry registry-credentials \
   --docker-username=<username> \
   --docker-password=<password> \
   --docker-email=<email>
+```
+
+### Git Authentication
+
+For private Git repositories, create a secret with the Git credentials:
+
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: git-credentials
+  namespace: default
+data:
+  token: <base64-encoded-access-token>
+```
+
+or 
+
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: git-credentials
+  namespace: default
+data:
+  username: <base64-encoded-username>
+  password: <base64-encoded-password>
+```
+
+Then reference it in the Function under `.spec.source.authSecretRef.name`
+
+```yaml
+apiVersion: functions.dev/v1alpha1
+kind: Function
+metadata:
+  name: my-function
+  namespace: default
+spec:
+  source:
+    repositoryUrl: https://github.com/your-org/your-function.git
+    authSecretRef:
+      name: git-credentials
 ```
 
 ### Check Function Status
@@ -169,12 +213,13 @@ make lint
 
 ### Function Spec
 
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `source.repositoryUrl` | string | Yes | Git repository URL containing the function source code |
-| `registry.path` | string | Yes | Container registry path for the function image |
-| `registry.insecure` | boolean | No | Allow insecure registry connections |
-| `registry.authSecretRef` | object | No | Reference to registry authentication secret |
+| Field                    | Type    | Required | Description                                            |
+|--------------------------|---------|----------|--------------------------------------------------------|
+| `source.repositoryUrl`   | string  | Yes      | Git repository URL containing the function source code |
+| `source.authSecretRef`   | object  | No       | Reference to Git repository authentication secret      |
+| `registry.path`          | string  | Yes      | Container registry path for the function image         |
+| `registry.insecure`      | boolean | No       | Allow insecure registry connections                    |
+| `registry.authSecretRef` | object  | No       | Reference to registry authentication secret            |
 
 ### Function Status
 

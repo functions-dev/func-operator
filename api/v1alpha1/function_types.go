@@ -46,6 +46,8 @@ type FunctionSpecSource struct {
 
 	// +kubebuilder:validation:Optional
 	Reference string `json:"reference"`
+
+	AuthSecretRef *v1.LocalObjectReference `json:"authSecretRef,omitempty"`
 }
 
 type FunctionSpecRegistry struct {

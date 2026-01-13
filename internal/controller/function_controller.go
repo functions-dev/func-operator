@@ -90,7 +90,15 @@ func (r *FunctionReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 	if function.Spec.Source.Reference != "" {
 		branchReference = function.Spec.Source.Reference
 	}
-	repo, err := r.GitManager.CloneRepository(ctx, function.Spec.Source.RepositoryURL, branchReference)
+
+	gitAuthSecret := v1.Secret{}
+	if function.Spec.Source.AuthSecretRef != nil {
+		if err := r.Get(ctx, types.NamespacedName{Namespace: req.Namespace, Name: function.Spec.Source.AuthSecretRef.Name}, &gitAuthSecret); err != nil {
+			return ctrl.Result{}, err
+		}
+	}
+
+	repo, err := r.GitManager.CloneRepository(ctx, function.Spec.Source.RepositoryURL, branchReference, gitAuthSecret.Data)
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to setup git repository: %w", err)
 	}

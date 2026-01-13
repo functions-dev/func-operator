@@ -38,8 +38,8 @@ func (_m *MockManager) EXPECT() *MockManager_Expecter {
 }
 
 // CloneRepository provides a mock function for the type MockManager
-func (_mock *MockManager) CloneRepository(ctx context.Context, url string, reference string) (*Repository, error) {
-	ret := _mock.Called(ctx, url, reference)
+func (_mock *MockManager) CloneRepository(ctx context.Context, url string, reference string, auth map[string][]byte) (*Repository, error) {
+	ret := _mock.Called(ctx, url, reference, auth)
 
 	if len(ret) == 0 {
 		panic("no return value specified for CloneRepository")
@@ -47,18 +47,18 @@ func (_mock *MockManager) CloneRepository(ctx context.Context, url string, refer
 
 	var r0 *Repository
 	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string) (*Repository, error)); ok {
-		return returnFunc(ctx, url, reference)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string, map[string][]byte) (*Repository, error)); ok {
+		return returnFunc(ctx, url, reference, auth)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string) *Repository); ok {
-		r0 = returnFunc(ctx, url, reference)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string, map[string][]byte) *Repository); ok {
+		r0 = returnFunc(ctx, url, reference, auth)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).(*Repository)
 		}
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, string, string) error); ok {
-		r1 = returnFunc(ctx, url, reference)
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, string, map[string][]byte) error); ok {
+		r1 = returnFunc(ctx, url, reference, auth)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -74,11 +74,12 @@ type MockManager_CloneRepository_Call struct {
 //   - ctx context.Context
 //   - url string
 //   - reference string
-func (_e *MockManager_Expecter) CloneRepository(ctx interface{}, url interface{}, reference interface{}) *MockManager_CloneRepository_Call {
-	return &MockManager_CloneRepository_Call{Call: _e.mock.On("CloneRepository", ctx, url, reference)}
+//   - auth map[string][]byte
+func (_e *MockManager_Expecter) CloneRepository(ctx interface{}, url interface{}, reference interface{}, auth interface{}) *MockManager_CloneRepository_Call {
+	return &MockManager_CloneRepository_Call{Call: _e.mock.On("CloneRepository", ctx, url, reference, auth)}
 }
 
-func (_c *MockManager_CloneRepository_Call) Run(run func(ctx context.Context, url string, reference string)) *MockManager_CloneRepository_Call {
+func (_c *MockManager_CloneRepository_Call) Run(run func(ctx context.Context, url string, reference string, auth map[string][]byte)) *MockManager_CloneRepository_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
@@ -92,10 +93,15 @@ func (_c *MockManager_CloneRepository_Call) Run(run func(ctx context.Context, ur
 		if args[2] != nil {
 			arg2 = args[2].(string)
 		}
+		var arg3 map[string][]byte
+		if args[3] != nil {
+			arg3 = args[3].(map[string][]byte)
+		}
 		run(
 			arg0,
 			arg1,
 			arg2,
+			arg3,
 		)
 	})
 	return _c
@@ -106,7 +112,7 @@ func (_c *MockManager_CloneRepository_Call) Return(repository *Repository, err e
 	return _c
 }
 
-func (_c *MockManager_CloneRepository_Call) RunAndReturn(run func(ctx context.Context, url string, reference string) (*Repository, error)) *MockManager_CloneRepository_Call {
+func (_c *MockManager_CloneRepository_Call) RunAndReturn(run func(ctx context.Context, url string, reference string, auth map[string][]byte) (*Repository, error)) *MockManager_CloneRepository_Call {
 	_c.Call.Return(run)
 	return _c
 }
