@@ -15,17 +15,17 @@ spec:
   scope: Namespaced
   versions:
   - additionalPrinterColumns:
+    - description: Ready status
+      jsonPath: .status.conditions[?(@.type=="Ready")].status
+      name: Ready
+      type: string
+    - description: Ready reason
+      jsonPath: .status.conditions[?(@.type=="Ready")].reason
+      name: Reason
+      type: string
     - jsonPath: .metadata.creationTimestamp
       name: Age
       type: date
-    - description: Ready Condition Status
-      jsonPath: .status.conditions[?(@.type=="Deployed")].status
-      name: Ready
-      type: string
-    - description: Ready Condition Reason
-      jsonPath: .status.conditions[?(@.type=="Deployed")].reason
-      name: Reason
-      type: string
     name: v1alpha1
     schema:
       openAPIV3Schema:

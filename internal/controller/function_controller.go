@@ -37,7 +37,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
-	logf "sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
 	"github.com/creydr/func-operator/api/v1alpha1"
@@ -67,48 +67,12 @@ type FunctionReconciler struct {
 // +kubebuilder:rbac:groups=tekton.dev,resources=taskruns,verbs=get;list;watch
 // +kubebuilder:rbac:groups=rbac.authorization.k8s.io,resources=rolebindings,verbs=get;list;watch;create;update;patch;delete
 
-// Reconcile a Function with status update on error
+// Reconcile a Function with status update
 func (r *FunctionReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	logger := logf.FromContext(ctx)
+	logger := log.FromContext(ctx).WithValues("function", fmt.Sprintf("%s/%s", req.Namespace, req.Name))
 
-	reconcileRes, reconcileErr := r.reconcile(ctx, req)
-
-	function := &v1alpha1.Function{}
-	if err := r.Get(ctx, req.NamespacedName, function); err != nil {
-		// we can't get the function to update the status -> return early
-		if apierrors.IsNotFound(err) {
-			// function was already deleted -> nothing to update
-			return ctrl.Result{}, nil
-		}
-		logger.Error(err, "Unable to fetch Function to update status condition", "reconcileError", reconcileErr)
-		return reconcileRes, reconcileErr
-	}
-
-	statusUpdated := false
-	if reconcileErr != nil {
-		// update status condition with error
-		statusUpdated = function.Status.MarkDeployFailed("ReconcileError", "%s", reconcileErr.Error())
-	} else {
-		// clear previous errors
-		statusUpdated = function.Status.MarkDeploySucceeded()
-	}
-
-	if statusUpdated {
-		// update status
-		if err := r.Status().Update(ctx, function); err != nil {
-			logger.Error(err, "Unable to update Function status conditions", "functionName", function.Name, "functionNamespace", function.Namespace)
-			return reconcileRes, reconcileErr
-		}
-	}
-
-	return reconcileRes, reconcileErr
-}
-
-func (r *FunctionReconciler) reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	logger := logf.FromContext(ctx)
-
-	function := &v1alpha1.Function{}
-	err := r.Get(ctx, req.NamespacedName, function)
+	original := &v1alpha1.Function{}
+	err := r.Get(ctx, req.NamespacedName, original)
 	if err != nil {
 		if apierrors.IsNotFound(err) {
 			// If the custom resource is not found then it usually means that it was deleted or not created
@@ -121,6 +85,27 @@ func (r *FunctionReconciler) reconcile(ctx context.Context, req ctrl.Request) (c
 		return ctrl.Result{}, err
 	}
 
+	function := original.DeepCopy()
+	reconcileErr := r.reconcile(ctx, function)
+	function.CalculateReadyCondition()
+
+	// update status if required
+	if !equality.Semantic.DeepEqual(original.Status, function.Status) {
+		if err := r.Status().Update(ctx, function); err != nil {
+			logger.Error(err, "Unable to update Function status")
+			return ctrl.Result{}, err
+		}
+	}
+
+	return ctrl.Result{}, reconcileErr
+}
+
+func (r *FunctionReconciler) reconcile(ctx context.Context, function *v1alpha1.Function) error {
+	logger := log.FromContext(ctx).WithValues("function", fmt.Sprintf("%s/%s", function.Namespace, function.Name))
+
+	// Initialize conditions to start fresh each reconcile
+	function.InitializeConditions()
+
 	// checkout repo
 	branchReference := "main"
 	if function.Spec.Source.Reference != "" {
@@ -129,31 +114,37 @@ func (r *FunctionReconciler) reconcile(ctx context.Context, req ctrl.Request) (c
 
 	gitAuthSecret := v1.Secret{}
 	if function.Spec.Source.AuthSecretRef != nil {
-		if err := r.Get(ctx, types.NamespacedName{Namespace: req.Namespace, Name: function.Spec.Source.AuthSecretRef.Name}, &gitAuthSecret); err != nil {
-			return ctrl.Result{}, err
+		if err := r.Get(ctx, types.NamespacedName{Namespace: function.Namespace, Name: function.Spec.Source.AuthSecretRef.Name}, &gitAuthSecret); err != nil {
+			function.MarkSourceNotReady("AuthSecretNotFound", "Auth secret not found: %s", err.Error())
+			return err
 		}
 	}
 
 	repo, err := r.GitManager.CloneRepository(ctx, function.Spec.Source.RepositoryURL, branchReference, gitAuthSecret.Data)
 	if err != nil {
-		return ctrl.Result{}, fmt.Errorf("failed to setup git repository: %w", err)
+		function.MarkSourceNotReady("GitCloneFailed", "Failed to clone repository: %s", err.Error())
+		return fmt.Errorf("failed to setup git repository: %w", err)
 	}
 	defer repo.Cleanup()
 
 	// get metadata from repo
 	metadata, err := fn.Metadata(repo.Path())
 	if err != nil {
-		return ctrl.Result{}, fmt.Errorf("failed to get function metadata: %w", err)
+		function.MarkSourceNotReady("MetadataReadFailed", "Failed to read function metadata: %s", err.Error())
+		return fmt.Errorf("failed to get function metadata: %w", err)
 	}
+
+	// Source is ready - git clone and metadata read succeeded
+	function.MarkSourceReady()
 
 	if !controllerutil.ContainsFinalizer(function, functionFinalizer) {
 		logger.Info("Adding Finalizer for Function")
 		if ok := controllerutil.AddFinalizer(function, functionFinalizer); !ok {
-			return ctrl.Result{}, fmt.Errorf("failed to add finalizer for function: %w", err)
+			return fmt.Errorf("failed to add finalizer for function: %w", err)
 		}
 
 		if err = r.Update(ctx, function); err != nil {
-			return ctrl.Result{}, fmt.Errorf("failed to add finalizer for function: %w", err)
+			return fmt.Errorf("failed to add finalizer for function: %w", err)
 		}
 	}
 
@@ -163,32 +154,35 @@ func (r *FunctionReconciler) reconcile(ctx context.Context, req ctrl.Request) (c
 		if controllerutil.ContainsFinalizer(function, functionFinalizer) {
 			logger.Info("Performing Finalizer Operations for Function before delete CR")
 
-			// TODO: maybe set some status conditions marking the function as degraded
+			// Mark function as terminating
+			function.MarkTerminating()
 
 			// Perform all operations required before removing the finalizer and allow
 			// the Kubernetes API to remove the custom resource.
 			if err := r.Finalize(ctx, metadata.Name, function.Namespace); err != nil {
-				return ctrl.Result{}, fmt.Errorf("failed to perform finalizer for function: %w", err)
+				function.MarkFinalizeFailed(err)
+				return fmt.Errorf("failed to perform finalizer for function: %w", err)
 			}
 
 			logger.Info("Removing Finalizer for Function after successfully perform the operations")
 			if ok := controllerutil.RemoveFinalizer(function, functionFinalizer); !ok {
-				return ctrl.Result{}, fmt.Errorf("failed to remove finalizer for function")
+				return fmt.Errorf("failed to remove finalizer for function")
 			}
 
 			if err := r.Update(ctx, function); err != nil {
-				return ctrl.Result{}, fmt.Errorf("failed to remove finalizer for function: %w", err)
+				return fmt.Errorf("failed to remove finalizer for function: %w", err)
 			}
 		}
-		return ctrl.Result{}, nil
+		return nil
 	}
 
-	logger.Info("Reconciling Function", "function", req.NamespacedName)
+	logger.Info("Reconciling Function")
 
 	// deploy if needed
 	deployed, err := r.isDeployed(ctx, metadata.Name, function.Namespace)
 	if err != nil {
-		return ctrl.Result{}, fmt.Errorf("failed to check if function is already deployed: %w", err)
+		function.MarkDeployNotReady("DeployFailed", "Failed to check deployment status: %s", err.Error())
+		return fmt.Errorf("failed to check if function is already deployed: %w", err)
 	}
 
 	if deployed {
@@ -196,35 +190,44 @@ func (r *FunctionReconciler) reconcile(ctx context.Context, req ctrl.Request) (c
 
 		isOnLatestMiddleware, err := r.isMiddlewareLatest(ctx, metadata, function.Namespace)
 		if err != nil {
-			return ctrl.Result{}, fmt.Errorf("failed to check if function is using latest middleware: %w", err)
+			function.MarkMiddlewareNotUpToDate("MiddlewareCheckFailed", "Failed to check middleware version: %s", err.Error())
+			return fmt.Errorf("failed to check if function is using latest middleware: %w", err)
 		}
 
 		if !isOnLatestMiddleware {
-			logger.Info("Function is not on latest middleware. Will redeploy", "function", req.NamespacedName)
+			logger.Info("Function is not on latest middleware. Will redeploy")
+			function.MarkMiddlewareNotUpToDate("MiddlewareOutdated", "Middleware is outdated, redeploying")
 			if err = r.deploy(ctx, function, repo); err != nil {
-				return ctrl.Result{}, fmt.Errorf("failed to redeploy function: %w", err)
+				function.MarkDeployNotReady("DeployFailed", "Redeployment failed: %s", err.Error())
+				return fmt.Errorf("failed to redeploy function: %w", err)
 			}
+			function.MarkMiddlewareUpToDate()
 		} else {
-			logger.Info("Function is deployed with latest middleware. No need to redeploy", "function", req.NamespacedName)
+			logger.Info("Function is deployed with latest middleware. No need to redeploy")
+			function.MarkMiddlewareUpToDate()
 		}
 	} else {
 		// simply deploy
-		logger.Info("Function is not deployed already. Will deploy it", "function", req.NamespacedName)
+		logger.Info("Function is not deployed already. Will deploy it")
 
 		if err = r.deploy(ctx, function, repo); err != nil {
-			return ctrl.Result{}, fmt.Errorf("failed to deploy function: %w", err)
+			function.MarkDeployNotReady("DeployFailed", "Deployment failed: %s", err.Error())
+			return fmt.Errorf("failed to deploy function: %w", err)
 		}
 	}
+
+	// Deployment succeeded
+	function.MarkDeployReady()
 
 	// function status update
 	functionImage, err := r.deployedImage(ctx, metadata.Name, function.Namespace)
 	if err != nil {
-		return ctrl.Result{}, fmt.Errorf("failed to get deployed image of function: %w", err)
+		return fmt.Errorf("failed to get deployed image of function: %w", err)
 	}
 
 	funcMiddlewareVersion, err := r.FuncCliManager.GetMiddlewareVersion(ctx, metadata.Name, function.Namespace)
 	if err != nil {
-		return ctrl.Result{}, fmt.Errorf("failed to get function middleware version: %w", err)
+		return fmt.Errorf("failed to get function middleware version: %w", err)
 	}
 
 	function.Status.Name = metadata.Name
@@ -232,15 +235,11 @@ func (r *FunctionReconciler) reconcile(ctx context.Context, req ctrl.Request) (c
 	function.Status.DeployedImage = functionImage
 	function.Status.MiddlewareVersion = funcMiddlewareVersion
 
-	if err = r.Status().Update(ctx, function); err != nil {
-		return ctrl.Result{}, fmt.Errorf("failed to update function: %w", err)
-	}
-
-	return ctrl.Result{}, nil
+	return nil
 }
 
 func (r *FunctionReconciler) setupPipelineRBAC(ctx context.Context, function *v1alpha1.Function) error {
-	logger := logf.FromContext(ctx)
+	logger := log.FromContext(ctx)
 
 	logger.Info("Create rolebinding for deploy-function role")
 	expectedRoleBinding := &rbacv1.RoleBinding{
@@ -299,7 +298,7 @@ func (r *FunctionReconciler) setupPipelineRBAC(ctx context.Context, function *v1
 }
 
 func (r *FunctionReconciler) persistRegistryAuthSecret(ctx context.Context, function *v1alpha1.Function) (string, error) {
-	logger := logf.FromContext(ctx)
+	logger := log.FromContext(ctx)
 
 	logger.Info("Persist registry auth secret temporarily")
 
@@ -336,7 +335,7 @@ func (r *FunctionReconciler) persistRegistryAuthSecret(ctx context.Context, func
 }
 
 func (r *FunctionReconciler) deploy(ctx context.Context, function *v1alpha1.Function, repo *git.Repository) error {
-	logger := logf.FromContext(ctx)
+	logger := log.FromContext(ctx)
 
 	if err := r.setupPipelineRBAC(ctx, function); err != nil {
 		return fmt.Errorf("failed to setup pipeline RBAC: %w", err)
