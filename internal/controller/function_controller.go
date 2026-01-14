@@ -67,8 +67,44 @@ type FunctionReconciler struct {
 // +kubebuilder:rbac:groups=tekton.dev,resources=taskruns,verbs=get;list;watch
 // +kubebuilder:rbac:groups=rbac.authorization.k8s.io,resources=rolebindings,verbs=get;list;watch;create;update;patch;delete
 
-// Reconcile a Function
+// Reconcile a Function with status update on error
 func (r *FunctionReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+	logger := logf.FromContext(ctx)
+
+	reconcileRes, reconcileErr := r.reconcile(ctx, req)
+
+	function := &v1alpha1.Function{}
+	if err := r.Get(ctx, req.NamespacedName, function); err != nil {
+		// we can't get the function to update the status -> return early
+		if apierrors.IsNotFound(err) {
+			// function was already deleted -> nothing to update
+			return ctrl.Result{}, nil
+		}
+		logger.Error(err, "Unable to fetch Function to update status condition", "reconcileError", reconcileErr)
+		return reconcileRes, reconcileErr
+	}
+
+	statusUpdated := false
+	if reconcileErr != nil {
+		// update status condition with error
+		statusUpdated = function.Status.MarkDeployFailed("ReconcileError", "%s", reconcileErr.Error())
+	} else {
+		// clear previous errors
+		statusUpdated = function.Status.MarkDeploySucceeded()
+	}
+
+	if statusUpdated {
+		// update status
+		if err := r.Status().Update(ctx, function); err != nil {
+			logger.Error(err, "Unable to update Function status conditions", "functionName", function.Name, "functionNamespace", function.Namespace)
+			return reconcileRes, reconcileErr
+		}
+	}
+
+	return reconcileRes, reconcileErr
+}
+
+func (r *FunctionReconciler) reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := logf.FromContext(ctx)
 
 	function := &v1alpha1.Function{}

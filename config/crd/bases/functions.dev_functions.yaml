@@ -14,7 +14,19 @@ spec:
     singular: function
   scope: Namespaced
   versions:
-  - name: v1alpha1
+  - additionalPrinterColumns:
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    - description: Ready Condition Status
+      jsonPath: .status.conditions[?(@.type=="Deployed")].status
+      name: Ready
+      type: string
+    - description: Ready Condition Reason
+      jsonPath: .status.conditions[?(@.type=="Deployed")].reason
+      name: Reason
+      type: string
+    name: v1alpha1
     schema:
       openAPIV3Schema:
         description: Function is the Schema for the functions API.
