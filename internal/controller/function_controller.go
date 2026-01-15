@@ -71,6 +71,9 @@ type FunctionReconciler struct {
 func (r *FunctionReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := log.FromContext(ctx).WithValues("function", fmt.Sprintf("%s/%s", req.Namespace, req.Name))
 
+	// add logger with values to context back
+	ctx = log.IntoContext(ctx, logger)
+
 	original := &v1alpha1.Function{}
 	err := r.Get(ctx, req.NamespacedName, original)
 	if err != nil {
@@ -101,12 +104,32 @@ func (r *FunctionReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 }
 
 func (r *FunctionReconciler) reconcile(ctx context.Context, function *v1alpha1.Function) error {
-	logger := log.FromContext(ctx).WithValues("function", fmt.Sprintf("%s/%s", function.Namespace, function.Name))
-
 	// Initialize conditions to start fresh each reconcile
 	function.InitializeConditions()
 
-	// checkout repo
+	repo, metadata, err := r.prepareSource(ctx, function)
+	if err != nil {
+		return err
+	}
+	defer repo.Cleanup()
+
+	if err := r.ensureFinalizer(ctx, function); err != nil {
+		return err
+	}
+
+	if function.GetDeletionTimestamp() != nil {
+		return r.handleDeletion(ctx, function, metadata.Name)
+	}
+
+	if err := r.ensureDeployment(ctx, function, repo, metadata); err != nil {
+		return err
+	}
+
+	return r.updateFunctionStatus(ctx, function, metadata)
+}
+
+// prepareSource clones the git repository and retrieves function metadata
+func (r *FunctionReconciler) prepareSource(ctx context.Context, function *v1alpha1.Function) (*git.Repository, *funcfn.Function, error) {
 	branchReference := "main"
 	if function.Spec.Source.Reference != "" {
 		branchReference = function.Spec.Source.Reference
@@ -116,110 +139,131 @@ func (r *FunctionReconciler) reconcile(ctx context.Context, function *v1alpha1.F
 	if function.Spec.Source.AuthSecretRef != nil {
 		if err := r.Get(ctx, types.NamespacedName{Namespace: function.Namespace, Name: function.Spec.Source.AuthSecretRef.Name}, &gitAuthSecret); err != nil {
 			function.MarkSourceNotReady("AuthSecretNotFound", "Auth secret not found: %s", err.Error())
-			return err
+			return nil, nil, err
 		}
 	}
 
 	repo, err := r.GitManager.CloneRepository(ctx, function.Spec.Source.RepositoryURL, branchReference, gitAuthSecret.Data)
 	if err != nil {
 		function.MarkSourceNotReady("GitCloneFailed", "Failed to clone repository: %s", err.Error())
-		return fmt.Errorf("failed to setup git repository: %w", err)
+		return nil, nil, fmt.Errorf("failed to setup git repository: %w", err)
 	}
-	defer repo.Cleanup()
 
-	// get metadata from repo
 	metadata, err := fn.Metadata(repo.Path())
 	if err != nil {
 		function.MarkSourceNotReady("MetadataReadFailed", "Failed to read function metadata: %s", err.Error())
-		return fmt.Errorf("failed to get function metadata: %w", err)
+		return nil, nil, fmt.Errorf("failed to get function metadata: %w", err)
 	}
 
 	// Source is ready - git clone and metadata read succeeded
 	function.MarkSourceReady()
 
-	if !controllerutil.ContainsFinalizer(function, functionFinalizer) {
-		logger.Info("Adding Finalizer for Function")
-		if ok := controllerutil.AddFinalizer(function, functionFinalizer); !ok {
-			return fmt.Errorf("failed to add finalizer for function: %w", err)
-		}
+	return repo, &metadata, nil
+}
 
-		if err = r.Update(ctx, function); err != nil {
-			return fmt.Errorf("failed to add finalizer for function: %w", err)
-		}
-	}
-
-	// Check if the Function instance is marked to be deleted, which is
-	// indicated by the deletion timestamp being set.
-	if function.GetDeletionTimestamp() != nil {
-		if controllerutil.ContainsFinalizer(function, functionFinalizer) {
-			logger.Info("Performing Finalizer Operations for Function before delete CR")
-
-			// Mark function as terminating
-			function.MarkTerminating()
-
-			// Perform all operations required before removing the finalizer and allow
-			// the Kubernetes API to remove the custom resource.
-			if err := r.Finalize(ctx, metadata.Name, function.Namespace); err != nil {
-				function.MarkFinalizeFailed(err)
-				return fmt.Errorf("failed to perform finalizer for function: %w", err)
-			}
-
-			logger.Info("Removing Finalizer for Function after successfully perform the operations")
-			if ok := controllerutil.RemoveFinalizer(function, functionFinalizer); !ok {
-				return fmt.Errorf("failed to remove finalizer for function")
-			}
-
-			if err := r.Update(ctx, function); err != nil {
-				return fmt.Errorf("failed to remove finalizer for function: %w", err)
-			}
-		}
+// ensureFinalizer adds the finalizer to the function if it doesn't exist
+func (r *FunctionReconciler) ensureFinalizer(ctx context.Context, function *v1alpha1.Function) error {
+	if controllerutil.ContainsFinalizer(function, functionFinalizer) {
 		return nil
 	}
 
+	logger := log.FromContext(ctx)
+	logger.Info("Adding Finalizer for Function")
+
+	if ok := controllerutil.AddFinalizer(function, functionFinalizer); !ok {
+		return fmt.Errorf("failed to add finalizer for function")
+	}
+
+	if err := r.Update(ctx, function); err != nil {
+		return fmt.Errorf("failed to add finalizer for function: %w", err)
+	}
+
+	return nil
+}
+
+// handleDeletion performs cleanup operations when a function is being deleted
+func (r *FunctionReconciler) handleDeletion(ctx context.Context, function *v1alpha1.Function, functionName string) error {
+	if !controllerutil.ContainsFinalizer(function, functionFinalizer) {
+		return nil
+	}
+
+	logger := log.FromContext(ctx)
+	logger.Info("Performing Finalizer Operations for Function before delete CR")
+
+	// Mark function as terminating
+	function.MarkTerminating()
+
+	// Perform all operations required before removing the finalizer
+	if err := r.Finalize(ctx, functionName, function.Namespace); err != nil {
+		function.MarkFinalizeFailed(err)
+		return fmt.Errorf("failed to perform finalizer for function: %w", err)
+	}
+
+	logger.Info("Removing Finalizer for Function after successfully perform the operations")
+	if ok := controllerutil.RemoveFinalizer(function, functionFinalizer); !ok {
+		return fmt.Errorf("failed to remove finalizer for function")
+	}
+
+	if err := r.Update(ctx, function); err != nil {
+		return fmt.Errorf("failed to remove finalizer for function: %w", err)
+	}
+
+	return nil
+}
+
+// ensureDeployment ensures the function is deployed and up-to-date
+func (r *FunctionReconciler) ensureDeployment(ctx context.Context, function *v1alpha1.Function, repo *git.Repository, metadata *funcfn.Function) error {
+	logger := log.FromContext(ctx)
 	logger.Info("Reconciling Function")
 
-	// deploy if needed
 	deployed, err := r.isDeployed(ctx, metadata.Name, function.Namespace)
 	if err != nil {
 		function.MarkDeployNotReady("DeployFailed", "Failed to check deployment status: %s", err.Error())
 		return fmt.Errorf("failed to check if function is already deployed: %w", err)
 	}
 
-	if deployed {
-		// check middleware for updates and eventually redeploy
-
-		isOnLatestMiddleware, err := r.isMiddlewareLatest(ctx, metadata, function.Namespace)
-		if err != nil {
-			function.MarkMiddlewareNotUpToDate("MiddlewareCheckFailed", "Failed to check middleware version: %s", err.Error())
-			return fmt.Errorf("failed to check if function is using latest middleware: %w", err)
-		}
-
-		if !isOnLatestMiddleware {
-			logger.Info("Function is not on latest middleware. Will redeploy")
-			function.MarkMiddlewareNotUpToDate("MiddlewareOutdated", "Middleware is outdated, redeploying")
-			if err = r.deploy(ctx, function, repo); err != nil {
-				function.MarkDeployNotReady("DeployFailed", "Redeployment failed: %s", err.Error())
-				return fmt.Errorf("failed to redeploy function: %w", err)
-			}
-			function.MarkMiddlewareUpToDate()
-		} else {
-			logger.Info("Function is deployed with latest middleware. No need to redeploy")
-			function.MarkMiddlewareUpToDate()
-		}
-	} else {
-		// simply deploy
-		logger.Info("Function is not deployed already. Will deploy it")
-
-		if err = r.deploy(ctx, function, repo); err != nil {
+	if !deployed {
+		logger.Info("Function is not deployed. Deploying now")
+		if err := r.deploy(ctx, function, repo); err != nil {
 			function.MarkDeployNotReady("DeployFailed", "Deployment failed: %s", err.Error())
 			return fmt.Errorf("failed to deploy function: %w", err)
 		}
+		function.MarkDeployReady()
+		return nil
 	}
 
-	// Deployment succeeded
-	function.MarkDeployReady()
+	// Function is deployed - check middleware version
+	return r.handleMiddlewareUpdate(ctx, function, repo, metadata)
+}
 
-	// function status update
+// handleMiddlewareUpdate checks if the function is using the latest middleware and redeploys if needed
+func (r *FunctionReconciler) handleMiddlewareUpdate(ctx context.Context, function *v1alpha1.Function, repo *git.Repository, metadata *funcfn.Function) error {
+	logger := log.FromContext(ctx)
+
+	isOnLatestMiddleware, err := r.isMiddlewareLatest(ctx, metadata, function.Namespace)
+	if err != nil {
+		function.MarkMiddlewareNotUpToDate("MiddlewareCheckFailed", "Failed to check middleware version: %s", err.Error())
+		return fmt.Errorf("failed to check if function is using latest middleware: %w", err)
+	}
+
+	if !isOnLatestMiddleware {
+		logger.Info("Function is not on latest middleware. Will redeploy")
+		function.MarkMiddlewareNotUpToDate("MiddlewareOutdated", "Middleware is outdated, redeploying")
+		if err := r.deploy(ctx, function, repo); err != nil {
+			function.MarkDeployNotReady("DeployFailed", "Redeployment failed: %s", err.Error())
+			return fmt.Errorf("failed to redeploy function: %w", err)
+		}
+	} else {
+		logger.Info("Function is deployed with latest middleware. No need to redeploy")
+	}
+
+	function.MarkMiddlewareUpToDate()
+	function.MarkDeployReady()
+	return nil
+}
+
+// updateFunctionStatus updates the function status with current deployment information
+func (r *FunctionReconciler) updateFunctionStatus(ctx context.Context, function *v1alpha1.Function, metadata *funcfn.Function) error {
 	functionImage, err := r.deployedImage(ctx, metadata.Name, function.Namespace)
 	if err != nil {
 		return fmt.Errorf("failed to get deployed image of function: %w", err)
@@ -271,29 +315,31 @@ func (r *FunctionReconciler) setupPipelineRBAC(ctx context.Context, function *v1
 	err := r.Get(ctx, types.NamespacedName{Name: expectedRoleBinding.Name, Namespace: expectedRoleBinding.Namespace}, foundRoleBinding)
 	if err != nil {
 		if apierrors.IsNotFound(err) {
-			err = r.Create(ctx, expectedRoleBinding)
-			if err != nil {
+			if err := r.Create(ctx, expectedRoleBinding); err != nil {
 				return fmt.Errorf("failed to create role binding for deploy-function role: %w", err)
 			}
 			logger.Info("Created role binding for deploy-function role")
 			return nil
 		}
-
 		return fmt.Errorf("failed to check if deploy-function role binding already exists: %w", err)
-	} else {
-		if !equality.Semantic.DeepDerivative(expectedRoleBinding, foundRoleBinding) {
-			err = r.Update(ctx, foundRoleBinding)
-			if err != nil {
-				return fmt.Errorf("failed to update deploy-function role binding: %w", err)
-			}
-
-			logger.Info("Updated deploy-function role binding")
-			return nil
-		}
-
-		logger.Info("Role binding already exists and is up to date. No need to update")
 	}
 
+	// Update if needed
+	if !equality.Semantic.DeepDerivative(expectedRoleBinding, foundRoleBinding) {
+		// Copy expected values into found object
+		foundRoleBinding.Subjects = expectedRoleBinding.Subjects
+		foundRoleBinding.RoleRef = expectedRoleBinding.RoleRef
+		foundRoleBinding.OwnerReferences = expectedRoleBinding.OwnerReferences
+
+		if err := r.Update(ctx, foundRoleBinding); err != nil {
+			return fmt.Errorf("failed to update deploy-function role binding: %w", err)
+		}
+
+		logger.Info("Updated deploy-function role binding")
+		return nil
+	}
+
+	logger.Info("Role binding already exists and is up to date. No need to update")
 	return nil
 }
 
@@ -361,7 +407,7 @@ func (r *FunctionReconciler) deploy(ctx context.Context, function *v1alpha1.Func
 		deployOptions.RegistryAuthFile = authFile
 	}
 
-	logger.Info("Deploying function", "function", function.Name, "namespace", function.Namespace, "deployOptions", deployOptions)
+	logger.Info("Deploying function", "deployOptions", deployOptions)
 	err := r.FuncCliManager.Deploy(ctx, repo.Path(), function.Namespace, deployOptions)
 	if err != nil {
 		return fmt.Errorf("failed to deploy function: %w", err)
@@ -406,7 +452,7 @@ func (r *FunctionReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Complete(r)
 }
 
-func (r *FunctionReconciler) isMiddlewareLatest(ctx context.Context, metadata funcfn.Function, namespace string) (bool, error) {
+func (r *FunctionReconciler) isMiddlewareLatest(ctx context.Context, metadata *funcfn.Function, namespace string) (bool, error) {
 	latestMiddleware, err := r.FuncCliManager.GetLatestMiddlewareVersion(ctx, metadata.Runtime, metadata.Invoke)
 	if err != nil {
 		return false, fmt.Errorf("failed to get latest available middleware version: %w", err)
