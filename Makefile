@@ -32,7 +32,7 @@ BUNDLE_METADATA_OPTS ?= $(BUNDLE_CHANNELS) $(BUNDLE_DEFAULT_CHANNEL)
 #
 # For example, running 'make bundle-build bundle-push catalog-build catalog-push' will build and push both
 # functions.dev/func-operator-bundle:$VERSION and functions.dev/func-operator-catalog:$VERSION.
-IMAGE_TAG_BASE ?= functions.dev/func-operator
+IMAGE_TAG_BASE ?= localhost:5001/func-operator
 
 DEBUG_IMAGE_TAG_BASE ?= $(IMAGE_TAG_BASE)-debug
 
