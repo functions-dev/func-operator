@@ -16,16 +16,17 @@ A Kubernetes operator for managing serverless functions using the `func` CLI. Th
 Deploy the operator to your cluster:
 
 ```bash
-# Build and deploy the operator
-make docker-build docker-push IMG=<your-registry>/func-operator:v0.0.1
-make deploy IMG=<your-registry>/func-operator:v0.0.1
+# Deploy the operator
+make deploy IMG=ghcr.io/creydr/func-operator:latest
 ```
+
+**⚠️ Hint**: We don't have any major release yet, therefore the `latest` tag reflects the changes from the `main` branch.
 
 Or use the pre-built installer:
 
 ```bash
 # Generate installer manifests
-make build-installer IMG=<your-registry>/func-operator:v0.0.1
+make build-installer IMG=ghcr.io/creydr/func-operator:latest
 
 # Apply the installer
 kubectl apply -f dist/install.yaml
