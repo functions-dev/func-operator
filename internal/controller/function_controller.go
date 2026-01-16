@@ -109,23 +109,29 @@ func (r *FunctionReconciler) reconcile(ctx context.Context, function *v1alpha1.F
 
 	repo, metadata, err := r.prepareSource(ctx, function)
 	if err != nil {
-		return err
+		return fmt.Errorf("prepare source failed: %w", err)
 	}
 	defer repo.Cleanup()
 
 	if err := r.ensureFinalizer(ctx, function); err != nil {
-		return err
+		return fmt.Errorf("setting up finalizers failed: %w", err)
 	}
 
 	if function.GetDeletionTimestamp() != nil {
-		return r.handleDeletion(ctx, function, metadata.Name)
+		if err := r.handleDeletion(ctx, function, metadata.Name); err != nil {
+			return fmt.Errorf("deleting function failed: %w", err)
+		}
 	}
 
 	if err := r.ensureDeployment(ctx, function, repo, metadata); err != nil {
-		return err
+		return fmt.Errorf("deploying function failed: %w", err)
 	}
 
-	return r.updateFunctionStatus(ctx, function, metadata)
+	if err := r.updateFunctionStatus(ctx, function, metadata); err != nil {
+		return fmt.Errorf("updating function status failed: %w", err)
+	}
+
+	return nil
 }
 
 // prepareSource clones the git repository and retrieves function metadata
