@@ -100,7 +100,13 @@ func (r *FunctionReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		}
 	}
 
-	return ctrl.Result{}, reconcileErr
+	if reconcileErr != nil {
+		logger.Error(reconcileErr, "Failed to reconcile Function")
+		return ctrl.Result{}, reconcileErr
+	}
+
+	logger.Info("Reconciliation complete")
+	return ctrl.Result{}, nil
 }
 
 func (r *FunctionReconciler) reconcile(ctx context.Context, function *v1alpha1.Function) error {
