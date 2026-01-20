@@ -67,7 +67,6 @@ type FunctionSpecRegistry struct {
 type FunctionStatus struct {
 	Name              string `json:"name"`
 	Runtime           string `json:"runtime"`
-	DeployedImage     string `json:"deployedImage"`
 	MiddlewareVersion string `json:"middlewareVersion"`
 
 	Conditions []metav1.Condition `json:"conditions,omitempty"`

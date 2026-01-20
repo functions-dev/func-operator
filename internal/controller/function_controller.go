@@ -276,11 +276,6 @@ func (r *FunctionReconciler) handleMiddlewareUpdate(ctx context.Context, functio
 
 // updateFunctionStatus updates the function status with current deployment information
 func (r *FunctionReconciler) updateFunctionStatus(ctx context.Context, function *v1alpha1.Function, metadata *funcfn.Function) error {
-	functionImage, err := r.deployedImage(ctx, metadata.Name, function.Namespace)
-	if err != nil {
-		return fmt.Errorf("failed to get deployed image of function: %w", err)
-	}
-
 	funcMiddlewareVersion, err := r.FuncCliManager.GetMiddlewareVersion(ctx, metadata.Name, function.Namespace)
 	if err != nil {
 		return fmt.Errorf("failed to get function middleware version: %w", err)
@@ -288,7 +283,6 @@ func (r *FunctionReconciler) updateFunctionStatus(ctx context.Context, function 
 
 	function.Status.Name = metadata.Name
 	function.Status.Runtime = metadata.Runtime
-	function.Status.DeployedImage = functionImage
 	function.Status.MiddlewareVersion = funcMiddlewareVersion
 
 	return nil
@@ -441,15 +435,6 @@ func (r *FunctionReconciler) isDeployed(ctx context.Context, name, namespace str
 	}
 
 	return true, nil
-}
-
-func (r *FunctionReconciler) deployedImage(ctx context.Context, name, namespace string) (string, error) {
-	instance, err := r.FuncCliManager.Describe(ctx, name, namespace)
-	if err != nil {
-		return "", fmt.Errorf("failed to describe function: %w", err)
-	}
-
-	return instance.Image, nil
 }
 
 // SetupWithManager sets up the controller with the Manager.

@@ -163,8 +163,6 @@ spec:
                   - type
                   type: object
                 type: array
-              deployedImage:
-                type: string
               middlewareVersion:
                 type: string
               name:
@@ -172,7 +170,6 @@ spec:
               runtime:
                 type: string
             required:
-            - deployedImage
             - middlewareVersion
             - name
             - runtime
