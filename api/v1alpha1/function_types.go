@@ -65,9 +65,8 @@ type FunctionSpecRegistry struct {
 
 // FunctionStatus defines the observed state of Function.
 type FunctionStatus struct {
-	Name              string `json:"name"`
-	Runtime           string `json:"runtime"`
-	MiddlewareVersion string `json:"middlewareVersion"`
+	Name    string `json:"name"`
+	Runtime string `json:"runtime"`
 
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
 }

@@ -163,14 +163,11 @@ spec:
                   - type
                   type: object
                 type: array
-              middlewareVersion:
-                type: string
               name:
                 type: string
               runtime:
                 type: string
             required:
-            - middlewareVersion
             - name
             - runtime
             type: object

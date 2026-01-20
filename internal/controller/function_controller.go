@@ -133,9 +133,7 @@ func (r *FunctionReconciler) reconcile(ctx context.Context, function *v1alpha1.F
 		return fmt.Errorf("deploying function failed: %w", err)
 	}
 
-	if err := r.updateFunctionStatus(ctx, function, metadata); err != nil {
-		return fmt.Errorf("updating function status failed: %w", err)
-	}
+	r.updateFunctionStatus(function, metadata)
 
 	return nil
 }
@@ -275,17 +273,9 @@ func (r *FunctionReconciler) handleMiddlewareUpdate(ctx context.Context, functio
 }
 
 // updateFunctionStatus updates the function status with current deployment information
-func (r *FunctionReconciler) updateFunctionStatus(ctx context.Context, function *v1alpha1.Function, metadata *funcfn.Function) error {
-	funcMiddlewareVersion, err := r.FuncCliManager.GetMiddlewareVersion(ctx, metadata.Name, function.Namespace)
-	if err != nil {
-		return fmt.Errorf("failed to get function middleware version: %w", err)
-	}
-
+func (r *FunctionReconciler) updateFunctionStatus(function *v1alpha1.Function, metadata *funcfn.Function) {
 	function.Status.Name = metadata.Name
 	function.Status.Runtime = metadata.Runtime
-	function.Status.MiddlewareVersion = funcMiddlewareVersion
-
-	return nil
 }
 
 func (r *FunctionReconciler) setupPipelineRBAC(ctx context.Context, function *v1alpha1.Function) error {
