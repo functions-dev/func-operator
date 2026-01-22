@@ -24,8 +24,8 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/creydr/func-operator/internal/git"
-	"github.com/creydr/func-operator/internal/monitoring"
+	"github.com/functions-dev/func-operator/internal/git"
+	"github.com/functions-dev/func-operator/internal/monitoring"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
@@ -42,9 +42,9 @@ import (
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 
-	functionsdevv1alpha1 "github.com/creydr/func-operator/api/v1alpha1"
-	"github.com/creydr/func-operator/internal/controller"
-	"github.com/creydr/func-operator/internal/funccli"
+	functionsdevv1alpha1 "github.com/functions-dev/func-operator/api/v1alpha1"
+	"github.com/functions-dev/func-operator/internal/controller"
+	"github.com/functions-dev/func-operator/internal/funccli"
 	// +kubebuilder:scaffold:imports
 )
 
