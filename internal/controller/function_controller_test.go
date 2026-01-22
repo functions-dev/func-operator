@@ -21,8 +21,8 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/creydr/func-operator/internal/funccli"
-	"github.com/creydr/func-operator/internal/git"
+	"github.com/functions-dev/func-operator/internal/funccli"
+	"github.com/functions-dev/func-operator/internal/git"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"github.com/stretchr/testify/mock"
@@ -35,7 +35,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
-	functionsdevv1alpha1 "github.com/creydr/func-operator/api/v1alpha1"
+	functionsdevv1alpha1 "github.com/functions-dev/func-operator/api/v1alpha1"
 )
 
 var _ = Describe("Function Controller", func() {

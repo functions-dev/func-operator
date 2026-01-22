@@ -17,7 +17,7 @@ Deploy the operator to your cluster:
 
 ```bash
 # Deploy the operator
-make deploy IMG=ghcr.io/creydr/func-operator:latest
+make deploy IMG=ghcr.io/functions-dev/func-operator:latest
 ```
 
 **⚠️ Hint**: We don't have any major release yet, therefore the `latest` tag reflects the changes from the `main` branch.
@@ -26,7 +26,7 @@ Or use the pre-built installer:
 
 ```bash
 # Generate installer manifests
-make build-installer IMG=ghcr.io/creydr/func-operator:latest
+make build-installer IMG=ghcr.io/functions-dev/func-operator:latest
 
 # Apply the installer
 kubectl apply -f dist/install.yaml

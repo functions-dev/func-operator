@@ -9,7 +9,7 @@ plugins:
   manifests.sdk.operatorframework.io/v2: {}
   scorecard.sdk.operatorframework.io/v2: {}
 projectName: func-operator
-repo: github.com/creydr/func-operator
+repo: github.com/functions-dev/func-operator
 resources:
 - api:
     crdVersion: v1
@@ -17,6 +17,6 @@ resources:
   controller: true
   domain: functions.dev
   kind: Function
-  path: github.com/creydr/func-operator/api/v1alpha1
+  path: github.com/functions-dev/func-operator/api/v1alpha1
   version: v1alpha1
 version: "3"

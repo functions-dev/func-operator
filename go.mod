@@ -1,4 +1,4 @@
-module github.com/creydr/func-operator
+module github.com/functions-dev/func-operator
 
 go 1.25.0
 

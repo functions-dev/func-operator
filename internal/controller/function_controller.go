@@ -22,9 +22,9 @@ import (
 	"os"
 	"strings"
 
-	"github.com/creydr/func-operator/internal/funccli"
-	fn "github.com/creydr/func-operator/internal/function"
-	"github.com/creydr/func-operator/internal/git"
+	"github.com/functions-dev/func-operator/internal/funccli"
+	fn "github.com/functions-dev/func-operator/internal/function"
+	"github.com/functions-dev/func-operator/internal/git"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/equality"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -40,7 +40,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
-	"github.com/creydr/func-operator/api/v1alpha1"
+	"github.com/functions-dev/func-operator/api/v1alpha1"
 	rbacv1 "k8s.io/api/rbac/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 )

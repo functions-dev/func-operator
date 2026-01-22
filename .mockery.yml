@@ -11,9 +11,9 @@ require-template-schema-exists: true
 template: testify
 template-schema: '{{.Template}}.schema.json'
 packages:
-  github.com/creydr/func-operator/internal/funccli:
+  github.com/functions-dev/func-operator/internal/funccli:
     interfaces:
       Manager:
-  github.com/creydr/func-operator/internal/git:
+  github.com/functions-dev/func-operator/internal/git:
     interfaces:
       Manager:

@@ -14,7 +14,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/creydr/func-operator/internal/monitoring"
+	"github.com/functions-dev/func-operator/internal/monitoring"
 	"github.com/go-logr/logr"
 	"github.com/prometheus/client_golang/prometheus"
 	funcfn "knative.dev/func/pkg/functions"
