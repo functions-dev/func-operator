@@ -138,8 +138,6 @@ kubectl get function my-function -o yaml
 
 The status will include:
 - Function name and runtime
-- Deployed image reference
-- Middleware version
 - Deployment conditions
 
 ## Development
@@ -228,8 +226,6 @@ make lint
 |-------|------|-------------|
 | `name` | string | Function name from metadata |
 | `runtime` | string | Detected function runtime |
-| `deployedImage` | string | Full image reference of deployed function |
-| `middlewareVersion` | string | Version of function middleware |
 | `conditions` | array | Status conditions |
 
 ## Uninstallation
