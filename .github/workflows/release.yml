@@ -94,10 +94,21 @@ jobs:
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.version.outputs.major_minor }}
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.version.outputs.major }}
 
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: 'go.mod'
+
+      - name: Generate installation manifest
+        run: |
+          make build-installer IMG=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.version.outputs.full }}
+          mv dist/install.yaml func-operator.yaml
+
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           gh release create ${{ github.ref_name }} \
             --title "Release ${{ github.ref_name }}" \
-            --generate-notes
+            --generate-notes \
+            func-operator.yaml
