@@ -8,6 +8,7 @@ on:
 
 permissions:
   contents: write
+  actions: write
 
 jobs:
   create-tags:
@@ -27,6 +28,8 @@ jobs:
 
       - name: Handle initial release tag
         if: github.event_name == 'create' && github.event.ref_type == 'branch'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           BRANCH_NAME="${{ github.event.ref }}"
 
@@ -50,8 +53,13 @@ jobs:
           git tag "$TAG"
           git push origin "$TAG"
 
+          echo "Triggering release workflow for $TAG"
+          gh workflow run release.yml -f tag="$TAG"
+
       - name: Handle patch release tags
         if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           # Find all release branches
           RELEASE_BRANCHES=$(git branch -r | grep -E 'origin/release-[0-9]+\.[0-9]+$' | sed 's|origin/||' | sed 's/^[[:space:]]*//')
@@ -114,4 +122,8 @@ jobs:
             git push origin "$NEW_TAG"
 
             echo "Successfully created and pushed tag $NEW_TAG"
+
+            # Trigger release workflow
+            echo "Triggering release workflow for $NEW_TAG"
+            gh workflow run release.yml -f tag="$NEW_TAG"
           done
