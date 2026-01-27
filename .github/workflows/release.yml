@@ -101,7 +101,11 @@ jobs:
 
       - name: Generate installation manifest
         run: |
-          make build-installer IMG=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.version.outputs.full }}
+          GIT_SHA=$(git rev-parse --short HEAD)
+          make build-installer \
+            IMG=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.version.outputs.full }} \
+            VERSION_LABEL=${{ steps.version.outputs.full }} \
+            GIT_SHA_LABEL=${GIT_SHA}
           mv dist/install.yaml func-operator.yaml
 
       - name: Create GitHub Release
