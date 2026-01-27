@@ -122,7 +122,7 @@ jobs:
           GIT_SHA=$(git rev-parse --short HEAD)
           make build-installer \
             IMG=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.version.outputs.full }} \
-            VERSION_LABEL=${{ steps.version.outputs.full }} \
+            VERSION_LABEL=v${{ steps.version.outputs.full }} \
             GIT_SHA_LABEL=${GIT_SHA}
           mv dist/install.yaml func-operator.yaml
 
@@ -130,7 +130,8 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release create ${{ github.ref_name }} \
-            --title "Release ${{ github.ref_name }}" \
+          gh release create "v${{ steps.version.outputs.full }}" \
+            --title "v${{ steps.version.outputs.full }}" \
             --generate-notes \
+            --latest=${{ steps.version.outputs.is_latest }} \
             func-operator.yaml
