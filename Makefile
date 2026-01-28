@@ -209,11 +209,14 @@ docker-buildx: ## Build and push docker image for the manager for cross-platform
 build-installer: manifests generate kustomize ## Generate a consolidated YAML with CRDs and deployment.
 	mkdir -p dist
 	cd config/manager && $(KUSTOMIZE) edit set image controller=${IMG}
-	@if [ -n "$(VERSION_LABEL)" ]; then \
-		cd config/default && $(KUSTOMIZE) edit add label app.kubernetes.io/version:$(VERSION_LABEL) --force; \
-	fi
-	@if [ -n "$(GIT_SHA_LABEL)" ]; then \
-		cd config/default && $(KUSTOMIZE) edit add label app.kubernetes.io/commit:$(GIT_SHA_LABEL) --force; \
+	@if [ -n "$(VERSION_LABEL)" ] || [ -n "$(GIT_SHA_LABEL)" ]; then \
+		yq write --inplace config/default/kustomization.yaml 'labels[+].includeSelectors' true; \
+		if [ -n "$(VERSION_LABEL)" ]; then \
+			yq write --inplace config/default/kustomization.yaml 'labels[0].pairs[app.kubernetes.io/version]' '$(VERSION_LABEL)'; \
+		fi; \
+		if [ -n "$(GIT_SHA_LABEL)" ]; then \
+			yq write --inplace config/default/kustomization.yaml 'labels[0].pairs[app.kubernetes.io/commit]' '$(GIT_SHA_LABEL)'; \
+		fi; \
 	fi
 	$(KUSTOMIZE) build config/default > dist/install.yaml
 	@if [ -n "$(VERSION_LABEL)" ] || [ -n "$(GIT_SHA_LABEL)" ]; then \
