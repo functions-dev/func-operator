@@ -86,6 +86,7 @@ jobs:
           fi
 
       - name: Build and push image (latest version)
+        id: build_latest
         if: steps.version.outputs.is_latest == 'true'
         uses: docker/build-push-action@v6
         with:
@@ -100,6 +101,7 @@ jobs:
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
 
       - name: Build and push image (none latest version)
+        id: build_non_latest
         if: steps.version.outputs.is_latest == 'false'
         uses: docker/build-push-action@v6
         with:
@@ -120,10 +122,19 @@ jobs:
       - name: Generate installation manifest
         run: |
           GIT_SHA=$(git rev-parse --short HEAD)
+          
+          # Use digest from whichever build step ran (latest or non-latest)
+          if [ "${{ steps.version.outputs.is_latest }}" == "true" ]; then
+            IMAGE_DIGEST="${{ steps.build_latest.outputs.digest }}"
+          else
+            IMAGE_DIGEST="${{ steps.build_non_latest.outputs.digest }}"
+          fi
+          
           make build-installer \
-            IMG=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.version.outputs.full }} \
+            IMG=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${IMAGE_DIGEST} \
             VERSION_LABEL=v${{ steps.version.outputs.full }} \
             GIT_SHA_LABEL=${GIT_SHA}
+          
           mv dist/install.yaml func-operator.yaml
 
       - name: Create GitHub Release
