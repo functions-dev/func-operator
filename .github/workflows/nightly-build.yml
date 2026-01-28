@@ -1,4 +1,4 @@
-name: Build and Push Image
+name: Nightly Build and Push
 
 on:
   schedule:
