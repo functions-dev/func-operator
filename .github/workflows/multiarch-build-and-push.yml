@@ -1,9 +1,8 @@
 name: Build and Push Image
 
 on:
-  push:
-    branches:
-      - main
+  schedule:
+    - cron: '0 0 * * *'  # Runs at 00:00 UTC every day
 
 env:
   REGISTRY: ghcr.io
@@ -49,11 +48,9 @@ jobs:
         run: |
           GIT_SHA=$(git rev-parse --short HEAD)
           BUILD_TIMESTAMP=$(date +"%Y%m%d%H%M%S")
-          VERSION_TAG="${GIT_SHA}-${BUILD_TIMESTAMP}"
 
           echo "git_sha=${GIT_SHA}" >> $GITHUB_OUTPUT
           echo "build_timestamp=${BUILD_TIMESTAMP}" >> $GITHUB_OUTPUT
-          echo "version_tag=${VERSION_TAG}" >> $GITHUB_OUTPUT
 
       - name: Build and push image
         uses: docker/build-push-action@v6
@@ -62,6 +59,7 @@ jobs:
           target: prod
           platforms: linux/amd64,linux/arm64,linux/s390x,linux/ppc64le
           push: true
-          tags: |
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:main
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.version_tag }}
+          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:main
+          labels: |
+            org.opencontainers.image.revision=${{ steps.meta.outputs.git_sha }}
+            org.opencontainers.image.created=${{ steps.meta.outputs.build_timestamp }}
