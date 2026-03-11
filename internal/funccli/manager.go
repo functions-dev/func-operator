@@ -219,7 +219,10 @@ func (m *managerImpl) Deploy(ctx context.Context, repoPath string, namespace str
 		"--registry", opts.Registry,
 		"--git-url", opts.GitUrl,
 		"--builder", opts.Builder,
-		"--registry-authfile", opts.RegistryAuthFile,
+	}
+
+	if opts.RegistryAuthFile != "" {
+		deployArgs = append(deployArgs, "--registry-authfile", opts.RegistryAuthFile)
 	}
 
 	if opts.InsecureRegistry {
