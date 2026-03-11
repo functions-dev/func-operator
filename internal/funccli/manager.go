@@ -223,7 +223,7 @@ func (m *managerImpl) Deploy(ctx context.Context, repoPath string, namespace str
 	}
 
 	if opts.InsecureRegistry {
-		deployArgs = append(deployArgs, "--insecure-registry")
+		deployArgs = append(deployArgs, "--registry-insecure")
 	}
 
 	out, err := m.Run(ctx, repoPath, deployArgs...)
