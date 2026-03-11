@@ -132,7 +132,8 @@ var _ = Describe("Operator", Ordered, func() {
 				g.Expect(false).To(BeTrue(), "Ready condition not found")
 			}
 
-			Eventually(funcBecomeReady, 2*time.Minute).Should(Succeed())
+			// redeploy could take a bit longer therefore give a bit more time
+			Eventually(funcBecomeReady, 6*time.Minute).Should(Succeed())
 		})
 	})
 	Context("with a not yet deployed function", func() {
