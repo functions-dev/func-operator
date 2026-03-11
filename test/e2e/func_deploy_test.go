@@ -55,11 +55,34 @@ var _ = Describe("Operator", Ordered, func() {
 				"--path", tempDir,
 				"--registry", registry,
 				"--registry-insecure", strconv.FormatBool(registryInsecure))
-			_, err = utils.Run(cmd)
+			out, err := utils.Run(cmd)
 			Expect(err).NotTo(HaveOccurred())
+			_, _ = fmt.Fprint(GinkgoWriter, out)
 		})
 
 		AfterEach(func() {
+			specReport := CurrentSpecReport()
+			if specReport.Failed() {
+				if functionName != "" {
+					cmd := exec.Command("kubectl", "get", "function", functionName, "-n", functionNamespace, "-o", "yaml")
+					function, err := utils.Run(cmd)
+					if err == nil {
+						_, _ = fmt.Fprintf(GinkgoWriter, "Function:\n %s", function)
+					} else {
+						_, _ = fmt.Fprintf(GinkgoWriter, "Failed to get function: %s", err)
+					}
+				}
+
+				By("Fetching controller manager pod logs")
+				cmd := exec.Command("kubectl", "logs", "-l", "control-plane=controller-manager", "-n", namespace)
+				controllerLogs, err := utils.Run(cmd)
+				if err == nil {
+					_, _ = fmt.Fprintf(GinkgoWriter, "Controller logs:\n %s", controllerLogs)
+				} else {
+					_, _ = fmt.Fprintf(GinkgoWriter, "Failed to get Controller logs: %s", err)
+				}
+			}
+
 			if tempDir != "" {
 				cmd := exec.Command("func", "delete", "--path", tempDir)
 				_, err := utils.Run(cmd)
