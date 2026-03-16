@@ -35,14 +35,14 @@ const (
 // RepositoryProvider defines the interface for interacting with Git repository hosting providers
 type RepositoryProvider interface {
 	// User management
-	CreateUser(username, password, email string) error
+	CreateUser(username, password, email string) (cleanup func(), err error)
 	DeleteUser(username string) error
-	CreateRandomUser() (username, password, email string, err error)
+	CreateRandomUser() (username, password, email string, cleanup func(), err error)
 
 	// Repository management
-	CreateRepo(owner, name string, private bool) (string, error)
+	CreateRepo(owner, name string, private bool) (url string, cleanup func(), err error)
 	DeleteRepo(owner, name string) error
-	CreateRandomRepo(owner string, private bool) (name, url string, err error)
+	CreateRandomRepo(owner string, private bool) (name, url string, cleanup func(), err error)
 
 	// Authentication
 	CreateAccessToken(username, password, tokenName string) (string, error)
@@ -100,16 +100,20 @@ func NewGiteaClient() (*GiteaClient, error) {
 }
 
 // CreateUser creates a new Gitea user
-func (g *GiteaClient) CreateUser(username, password, email string) error {
-	_, _, err := g.client.AdminCreateUser(gitea.CreateUserOption{
+func (g *GiteaClient) CreateUser(username, password, email string) (cleanup func(), err error) {
+	_, _, err = g.client.AdminCreateUser(gitea.CreateUserOption{
 		Username: username,
 		Password: password,
 		Email:    email,
 	})
 	if err != nil {
-		return fmt.Errorf("failed to create user %s: %w", username, err)
+		return nil, fmt.Errorf("failed to create user %s: %w", username, err)
 	}
-	return nil
+
+	cleanup = func() {
+		_ = g.DeleteUser(username)
+	}
+	return cleanup, nil
 }
 
 // DeleteUser deletes a Gitea user
@@ -122,28 +126,32 @@ func (g *GiteaClient) DeleteUser(username string) error {
 }
 
 // CreateRandomUser creates a user with random credentials
-func (g *GiteaClient) CreateRandomUser() (username, password, email string, err error) {
+func (g *GiteaClient) CreateRandomUser() (username, password, email string, cleanup func(), err error) {
 	username = "user-" + rand.String(8)
 	password = "pass-" + rand.String(8)
 	email = username + "@test.local"
 
-	err = g.CreateUser(username, password, email)
-	return username, password, email, err
+	cleanup, err = g.CreateUser(username, password, email)
+	return username, password, email, cleanup, err
 }
 
 // CreateRepo creates a new repository and returns its URL
-func (g *GiteaClient) CreateRepo(owner, name string, private bool) (string, error) {
-	_, _, err := g.client.CreateRepo(gitea.CreateRepoOption{
+func (g *GiteaClient) CreateRepo(owner, name string, private bool) (url string, cleanup func(), err error) {
+	_, _, err = g.client.CreateRepo(gitea.CreateRepoOption{
 		Name:    name,
 		Private: private,
 	})
 	if err != nil {
-		return "", fmt.Errorf("failed to create repo %s/%s: %w", owner, name, err)
+		return "", nil, fmt.Errorf("failed to create repo %s/%s: %w", owner, name, err)
 	}
 
 	// Build repository URL
-	repoURL := fmt.Sprintf("%s/%s/%s.git", g.baseURL, owner, name)
-	return repoURL, nil
+	url = fmt.Sprintf("%s/%s/%s.git", g.baseURL, owner, name)
+
+	cleanup = func() {
+		_ = g.DeleteRepo(owner, name)
+	}
+	return url, cleanup, nil
 }
 
 // DeleteRepo deletes a repository
@@ -156,10 +164,10 @@ func (g *GiteaClient) DeleteRepo(owner, name string) error {
 }
 
 // CreateRandomRepo creates a repo with a random name
-func (g *GiteaClient) CreateRandomRepo(owner string, private bool) (name, url string, err error) {
+func (g *GiteaClient) CreateRandomRepo(owner string, private bool) (name, url string, cleanup func(), err error) {
 	name = "repo-" + rand.String(8)
-	url, err = g.CreateRepo(owner, name, private)
-	return name, url, err
+	url, cleanup, err = g.CreateRepo(owner, name, private)
+	return name, url, cleanup, err
 }
 
 // CreateAccessToken creates a personal access token for a user

@@ -37,9 +37,6 @@ var _ = Describe("Operator", Ordered, func() {
 	SetDefaultEventuallyPollingInterval(time.Second)
 
 	Context("with a deployed function", func() {
-		var username   string
-		var password   string
-		var repoName   string
 		var repoURL    string
 		var repoDir    string
 		var functionName, functionNamespace string
@@ -47,16 +44,19 @@ var _ = Describe("Operator", Ordered, func() {
 		BeforeEach(func() {
 			var err error
 
-			// Create Gitea resources
-			username, password, _, err = repoProvider.CreateRandomUser()
+			// Create repository provider resources with automatic cleanup
+			username, password, _, cleanup, err := repoProvider.CreateRandomUser()
 			Expect(err).NotTo(HaveOccurred())
+			DeferCleanup(cleanup)
 
-			repoName, repoURL, err = repoProvider.CreateRandomRepo(username, false)
+			_, repoURL, cleanup, err = repoProvider.CreateRandomRepo(username, false)
 			Expect(err).NotTo(HaveOccurred())
+			DeferCleanup(cleanup)
 
 			// Initialize repository with function code
 			repoDir, err = InitializeRepoWithFunction(repoURL, username, password, "go")
 			Expect(err).NotTo(HaveOccurred())
+			DeferCleanup(os.RemoveAll, repoDir)
 
 			// Deploy function using func CLI
 			cmd := exec.Command("func", "deploy",
@@ -66,6 +66,12 @@ var _ = Describe("Operator", Ordered, func() {
 			out, err := utils.Run(cmd)
 			Expect(err).NotTo(HaveOccurred())
 			_, _ = fmt.Fprint(GinkgoWriter, out)
+
+			// Cleanup func deployment
+			DeferCleanup(func() {
+				cmd := exec.Command("func", "delete", "--path", repoDir)
+				_, _ = utils.Run(cmd)
+			})
 
 			// Commit func.yaml changes
 			err = CommitAndPush(repoDir, "Update func.yaml after deploy", "func.yaml")
@@ -93,24 +99,6 @@ var _ = Describe("Operator", Ordered, func() {
 				} else {
 					_, _ = fmt.Fprintf(GinkgoWriter, "Failed to get Controller logs: %s", err)
 				}
-			}
-
-			// Cleanup func deployment
-			if repoDir != "" {
-				cmd := exec.Command("func", "delete", "--path", repoDir)
-				_, err := utils.Run(cmd)
-				Expect(err).NotTo(HaveOccurred())
-			}
-
-			// Cleanup repository resources
-			if repoDir != "" {
-				_ = os.RemoveAll(repoDir)
-			}
-			if username != "" && repoName != "" {
-				_ = repoProvider.DeleteRepo(username, repoName)
-			}
-			if username != "" {
-				_ = repoProvider.DeleteUser(username)
 			}
 
 			// Cleanup function resource
@@ -164,8 +152,6 @@ var _ = Describe("Operator", Ordered, func() {
 		})
 	})
 	Context("with a not yet deployed function", func() {
-		var username   string
-		var repoName   string
 		var repoURL    string
 		var functionName, functionNamespace string
 
@@ -173,26 +159,22 @@ var _ = Describe("Operator", Ordered, func() {
 			var err error
 
 			// Create repository but don't deploy
-			username, _, _, err = repoProvider.CreateRandomUser()
+			username, _, _, cleanup, err := repoProvider.CreateRandomUser()
 			Expect(err).NotTo(HaveOccurred())
+			DeferCleanup(cleanup)
 
-			repoName, repoURL, err = repoProvider.CreateRandomRepo(username, false)
+			_, repoURL, cleanup, err = repoProvider.CreateRandomRepo(username, false)
 			Expect(err).NotTo(HaveOccurred())
+			DeferCleanup(cleanup)
 		})
 
 		AfterEach(func() {
-			// Cleanup repository resources
-			if username != "" && repoName != "" {
-				_ = repoProvider.DeleteRepo(username, repoName)
-			}
-			if username != "" {
-				_ = repoProvider.DeleteUser(username)
-			}
-
 			// Cleanup function resource
-			cmd := exec.Command("kubectl", "delete", "function", functionName, "-n", functionNamespace, "--ignore-not-found")
-			_, err := utils.Run(cmd)
-			Expect(err).NotTo(HaveOccurred())
+			if functionName != "" {
+				cmd := exec.Command("kubectl", "delete", "function", functionName, "-n", functionNamespace, "--ignore-not-found")
+				_, err := utils.Run(cmd)
+				Expect(err).NotTo(HaveOccurred())
+			}
 		})
 
 		It("should mark the function as not ready", func() {
