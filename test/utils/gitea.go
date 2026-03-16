@@ -22,6 +22,7 @@ import (
 
 	"code.gitea.io/sdk/gitea"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/rand"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
 )
@@ -96,4 +97,36 @@ func NewGiteaClient() (*GiteaClient, error) {
 		adminUser: giteaAdminUser,
 		adminPass: giteaAdminPass,
 	}, nil
+}
+
+// CreateUser creates a new Gitea user
+func (g *GiteaClient) CreateUser(username, password, email string) error {
+	_, _, err := g.client.AdminCreateUser(gitea.CreateUserOption{
+		Username: username,
+		Password: password,
+		Email:    email,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to create user %s: %w", username, err)
+	}
+	return nil
+}
+
+// DeleteUser deletes a Gitea user
+func (g *GiteaClient) DeleteUser(username string) error {
+	_, err := g.client.AdminDeleteUser(username)
+	if err != nil {
+		return fmt.Errorf("failed to delete user %s: %w", username, err)
+	}
+	return nil
+}
+
+// CreateRandomUser creates a user with random credentials
+func (g *GiteaClient) CreateRandomUser() (username, password, email string, err error) {
+	username = "user-" + rand.String(8)
+	password = "pass-" + rand.String(8)
+	email = username + "@test.local"
+
+	err = g.CreateUser(username, password, email)
+	return username, password, email, err
 }
