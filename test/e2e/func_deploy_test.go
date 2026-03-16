@@ -58,8 +58,13 @@ var _ = Describe("Operator", func() {
 			Expect(err).NotTo(HaveOccurred())
 			DeferCleanup(os.RemoveAll, repoDir)
 
+			functionNamespace, err = utils.GetTestNamespace()
+			Expect(err).NotTo(HaveOccurred())
+			DeferCleanup(cleanupNamespaces, functionNamespace)
+
 			// Deploy function using func CLI
 			cmd := exec.Command("func", "deploy",
+				"--namespace", functionNamespace,
 				"--path", repoDir,
 				"--registry", registry,
 				"--registry-insecure", strconv.FormatBool(registryInsecure))
@@ -69,7 +74,7 @@ var _ = Describe("Operator", func() {
 
 			// Cleanup func deployment
 			DeferCleanup(func() {
-				cmd := exec.Command("func", "delete", "--path", repoDir)
+				cmd := exec.Command("func", "delete", "--path", repoDir, "--namespace", functionNamespace)
 				_, _ = utils.Run(cmd)
 			})
 
@@ -114,7 +119,7 @@ var _ = Describe("Operator", func() {
 			function := &functionsdevv1alpha1.Function{
 				ObjectMeta: metav1.ObjectMeta{
 					GenerateName: "my-function-",
-					Namespace:    "default",
+					Namespace:    functionNamespace,
 				},
 				Spec: functionsdevv1alpha1.FunctionSpec{
 					Source: functionsdevv1alpha1.FunctionSpecSource{
@@ -131,7 +136,6 @@ var _ = Describe("Operator", func() {
 			Expect(err).NotTo(HaveOccurred())
 
 			functionName = function.Name
-			functionNamespace = function.Namespace
 
 			funcBecomeReady := func(g Gomega) {
 				fn := &functionsdevv1alpha1.Function{}
@@ -172,6 +176,10 @@ var _ = Describe("Operator", func() {
 			repoDir, err = InitializeRepoWithFunction(repoURL, username, password, "go")
 			Expect(err).NotTo(HaveOccurred())
 			DeferCleanup(os.RemoveAll, repoDir)
+
+			functionNamespace, err = utils.GetTestNamespace()
+			Expect(err).NotTo(HaveOccurred())
+			DeferCleanup(cleanupNamespaces, functionNamespace)
 		})
 
 		AfterEach(func() {
@@ -188,7 +196,7 @@ var _ = Describe("Operator", func() {
 			function := &functionsdevv1alpha1.Function{
 				ObjectMeta: metav1.ObjectMeta{
 					GenerateName: "my-undeployed-function-",
-					Namespace:    "default",
+					Namespace:    functionNamespace,
 				},
 				Spec: functionsdevv1alpha1.FunctionSpec{
 					Source: functionsdevv1alpha1.FunctionSpecSource{
@@ -205,7 +213,6 @@ var _ = Describe("Operator", func() {
 			Expect(err).NotTo(HaveOccurred())
 
 			functionName = function.Name
-			functionNamespace = function.Namespace
 
 			funcBecomeReady := func(g Gomega) {
 				fn := &functionsdevv1alpha1.Function{}

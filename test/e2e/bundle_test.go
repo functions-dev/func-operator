@@ -109,7 +109,7 @@ var _ = Describe("Bundle", Label("bundle"), Ordered, func() {
 				_, _ = fmt.Fprint(GinkgoWriter, out)
 
 				By("Cleanup resources")
-				cleanupNamespaces(testNamespaces)
+				cleanupTestNamespaces(testNamespaces...)
 			}
 		})
 
@@ -147,7 +147,7 @@ var _ = Describe("Bundle", Label("bundle"), Ordered, func() {
 				_, _ = fmt.Fprint(GinkgoWriter, out)
 
 				By("Cleanup resources")
-				cleanupNamespaces(testNamespaces)
+				cleanupTestNamespaces(testNamespaces...)
 			}
 		})
 
@@ -187,7 +187,7 @@ var _ = Describe("Bundle", Label("bundle"), Ordered, func() {
 				_, _ = fmt.Fprint(GinkgoWriter, out)
 
 				By("Cleanup resources")
-				cleanupNamespaces(testNamespaces)
+				cleanupTestNamespaces(testNamespaces...)
 			}
 		})
 
@@ -244,7 +244,7 @@ var _ = Describe("Bundle", Label("bundle"), Ordered, func() {
 				_, _ = fmt.Fprint(GinkgoWriter, out)
 
 				By("Cleanup resources")
-				cleanupNamespaces(testNamespaces)
+				cleanupTestNamespaces(testNamespaces...)
 			}
 		})
 
@@ -284,7 +284,7 @@ var _ = Describe("Bundle", Label("bundle"), Ordered, func() {
 				_, _ = fmt.Fprint(GinkgoWriter, out)
 
 				By("Cleanup resources")
-				cleanupNamespaces(testNamespaces)
+				cleanupTestNamespaces(testNamespaces...)
 			}
 		})
 
@@ -410,10 +410,17 @@ func createMultipleNamespaceAndDeployFunction(count int) []TestNamespace {
 	return testNamespaces
 }
 
-func cleanupNamespaces(testNamespaces []TestNamespace) {
-	By("Cleaning up all resources")
+func cleanupTestNamespaces(testNamespaces ...TestNamespace) {
+	By("Cleaning up test namespaces resources")
 	for _, testNs := range testNamespaces {
-		cmd := exec.Command("kubectl", "delete", "namespace", testNs.Name, "--ignore-not-found")
+		cleanupNamespaces(testNs.Name)
+	}
+}
+
+func cleanupNamespaces(namespaces ...string) {
+	for _, ns := range namespaces {
+		By("Cleaning up namespace " + ns)
+		cmd := exec.Command("kubectl", "delete", "namespace", ns, "--ignore-not-found")
 		_, err := utils.Run(cmd)
 		Expect(err).NotTo(HaveOccurred())
 	}
