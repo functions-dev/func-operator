@@ -29,7 +29,6 @@ import (
 	. "github.com/onsi/gomega"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/apimachinery/pkg/util/rand"
 )
 
 var _ = Describe("Operator", Ordered, func() {
@@ -38,26 +37,39 @@ var _ = Describe("Operator", Ordered, func() {
 	SetDefaultEventuallyPollingInterval(time.Second)
 
 	Context("with a deployed function", func() {
-		var tempDir string
+		var username   string
+		var password   string
+		var repoName   string
+		var repoURL    string
+		var repoDir    string
 		var functionName, functionNamespace string
 
 		BeforeEach(func() {
 			var err error
-			// deploy function
-			tempDir = fmt.Sprintf("%s/func-operator-e2e-%s", os.TempDir(), rand.String(10))
+
+			// Create Gitea resources
+			username, password, _, err = repoProvider.CreateRandomUser()
 			Expect(err).NotTo(HaveOccurred())
 
-			cmd := exec.Command("git", "clone", "https://github.com/creydr/func-go-hello-world", tempDir)
-			_, err = utils.Run(cmd)
+			repoName, repoURL, err = repoProvider.CreateRandomRepo(username, false)
 			Expect(err).NotTo(HaveOccurred())
 
-			cmd = exec.Command("func", "deploy",
-				"--path", tempDir,
+			// Initialize repository with function code
+			repoDir, err = InitializeRepoWithFunction(repoURL, username, password, "go")
+			Expect(err).NotTo(HaveOccurred())
+
+			// Deploy function using func CLI
+			cmd := exec.Command("func", "deploy",
+				"--path", repoDir,
 				"--registry", registry,
 				"--registry-insecure", strconv.FormatBool(registryInsecure))
 			out, err := utils.Run(cmd)
 			Expect(err).NotTo(HaveOccurred())
 			_, _ = fmt.Fprint(GinkgoWriter, out)
+
+			// Commit func.yaml changes
+			err = CommitAndPush(repoDir, "Update func.yaml after deploy", "func.yaml")
+			Expect(err).NotTo(HaveOccurred())
 		})
 
 		AfterEach(func() {
@@ -83,15 +95,30 @@ var _ = Describe("Operator", Ordered, func() {
 				}
 			}
 
-			if tempDir != "" {
-				cmd := exec.Command("func", "delete", "--path", tempDir)
+			// Cleanup func deployment
+			if repoDir != "" {
+				cmd := exec.Command("func", "delete", "--path", repoDir)
 				_, err := utils.Run(cmd)
 				Expect(err).NotTo(HaveOccurred())
 			}
 
-			cmd := exec.Command("kubectl", "delete", "function", functionName, "-n", functionNamespace, "--ignore-not-found")
-			_, err := utils.Run(cmd)
-			Expect(err).NotTo(HaveOccurred())
+			// Cleanup repository resources
+			if repoDir != "" {
+				_ = os.RemoveAll(repoDir)
+			}
+			if username != "" && repoName != "" {
+				_ = repoProvider.DeleteRepo(username, repoName)
+			}
+			if username != "" {
+				_ = repoProvider.DeleteUser(username)
+			}
+
+			// Cleanup function resource
+			if functionName != "" {
+				cmd := exec.Command("kubectl", "delete", "function", functionName, "-n", functionNamespace, "--ignore-not-found")
+				_, err := utils.Run(cmd)
+				Expect(err).NotTo(HaveOccurred())
+			}
 		})
 
 		It("should mark the function as ready", func() {
@@ -103,7 +130,7 @@ var _ = Describe("Operator", Ordered, func() {
 				},
 				Spec: functionsdevv1alpha1.FunctionSpec{
 					Source: functionsdevv1alpha1.FunctionSpecSource{
-						RepositoryURL: "https://github.com/creydr/func-go-hello-world",
+						RepositoryURL: repoURL,
 					},
 					Registry: functionsdevv1alpha1.FunctionSpecRegistry{
 						Path:     registry,
@@ -137,9 +164,32 @@ var _ = Describe("Operator", Ordered, func() {
 		})
 	})
 	Context("with a not yet deployed function", func() {
+		var username   string
+		var repoName   string
+		var repoURL    string
 		var functionName, functionNamespace string
 
+		BeforeEach(func() {
+			var err error
+
+			// Create repository but don't deploy
+			username, _, _, err = repoProvider.CreateRandomUser()
+			Expect(err).NotTo(HaveOccurred())
+
+			repoName, repoURL, err = repoProvider.CreateRandomRepo(username, false)
+			Expect(err).NotTo(HaveOccurred())
+		})
+
 		AfterEach(func() {
+			// Cleanup repository resources
+			if username != "" && repoName != "" {
+				_ = repoProvider.DeleteRepo(username, repoName)
+			}
+			if username != "" {
+				_ = repoProvider.DeleteUser(username)
+			}
+
+			// Cleanup function resource
 			cmd := exec.Command("kubectl", "delete", "function", functionName, "-n", functionNamespace, "--ignore-not-found")
 			_, err := utils.Run(cmd)
 			Expect(err).NotTo(HaveOccurred())
@@ -154,7 +204,7 @@ var _ = Describe("Operator", Ordered, func() {
 				},
 				Spec: functionsdevv1alpha1.FunctionSpec{
 					Source: functionsdevv1alpha1.FunctionSpecSource{
-						RepositoryURL: "https://github.com/creydr/func-go-hello-world",
+						RepositoryURL: repoURL,
 					},
 					Registry: functionsdevv1alpha1.FunctionSpecRegistry{
 						Path:     registry,
