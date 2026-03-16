@@ -45,8 +45,8 @@ func InitializeRepoWithFunction(repoURL, username, password, language string) (r
 		return "", fmt.Errorf("failed to init function: %w", err)
 	}
 
-	// Initialize git repo
-	cmd = exec.Command("git", "-C", repoDir, "init")
+	// Initialize git repo with main as default branch
+	cmd = exec.Command("git", "-C", repoDir, "init", "-b", "main")
 	if _, err = utils.Run(cmd); err != nil {
 		return "", fmt.Errorf("failed to git init: %w", err)
 	}
