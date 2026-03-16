@@ -165,7 +165,8 @@ var _ = Describe("Bundle", Label("bundle"), Ordered, func() {
 			By("Setting up test namespaces")
 			testNamespaces = createMultipleNamespaceAndDeployFunction(4)
 
-			By("Installing the operator into " + testNamespaces[0].Name + " for " + testNamespaces[1].Name + " and " + testNamespaces[2].Name)
+			By("Installing the operator into " + testNamespaces[0].Name +
+				" for " + testNamespaces[1].Name + " and " + testNamespaces[2].Name)
 			out, err := utils.OperatorSdkRun("run", "bundle",
 				"--namespace", testNamespaces[0].Name,
 				"--install-mode", fmt.Sprintf("MultiNamespace=%s,%s", testNamespaces[1].Name, testNamespaces[2].Name),

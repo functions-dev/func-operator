@@ -75,7 +75,9 @@ func NewGiteaClient() (*GiteaClient, error) {
 	}
 
 	// Get gitea-endpoint ConfigMap
-	cm, err := clientset.CoreV1().ConfigMaps("kube-public").Get(context.Background(), "gitea-endpoint", metav1.GetOptions{})
+	cm, err := clientset.CoreV1().
+		ConfigMaps("kube-public").
+		Get(context.Background(), "gitea-endpoint", metav1.GetOptions{})
 	if err != nil {
 		return nil, fmt.Errorf("failed to get gitea-endpoint configmap: %w", err)
 	}
