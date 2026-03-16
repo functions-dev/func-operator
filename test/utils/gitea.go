@@ -130,3 +130,34 @@ func (g *GiteaClient) CreateRandomUser() (username, password, email string, err 
 	err = g.CreateUser(username, password, email)
 	return username, password, email, err
 }
+
+// CreateRepo creates a new repository and returns its URL
+func (g *GiteaClient) CreateRepo(owner, name string, private bool) (string, error) {
+	_, _, err := g.client.CreateRepo(gitea.CreateRepoOption{
+		Name:    name,
+		Private: private,
+	})
+	if err != nil {
+		return "", fmt.Errorf("failed to create repo %s/%s: %w", owner, name, err)
+	}
+
+	// Build repository URL
+	repoURL := fmt.Sprintf("%s/%s/%s.git", g.baseURL, owner, name)
+	return repoURL, nil
+}
+
+// DeleteRepo deletes a repository
+func (g *GiteaClient) DeleteRepo(owner, name string) error {
+	_, err := g.client.DeleteRepo(owner, name)
+	if err != nil {
+		return fmt.Errorf("failed to delete repo %s/%s: %w", owner, name, err)
+	}
+	return nil
+}
+
+// CreateRandomRepo creates a repo with a random name
+func (g *GiteaClient) CreateRandomRepo(owner string, private bool) (name, url string, err error) {
+	name = "repo-" + rand.String(8)
+	url, err = g.CreateRepo(owner, name, private)
+	return name, url, err
+}
