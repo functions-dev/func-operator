@@ -37,8 +37,8 @@ var _ = Describe("Operator", Ordered, func() {
 	SetDefaultEventuallyPollingInterval(time.Second)
 
 	Context("with a deployed function", func() {
-		var repoURL    string
-		var repoDir    string
+		var repoURL string
+		var repoDir string
 		var functionName, functionNamespace string
 
 		BeforeEach(func() {
@@ -152,8 +152,8 @@ var _ = Describe("Operator", Ordered, func() {
 		})
 	})
 	Context("with a not yet deployed function", func() {
-		var repoURL    string
-		var repoDir    string
+		var repoURL string
+		var repoDir string
 		var functionName, functionNamespace string
 
 		BeforeEach(func() {
