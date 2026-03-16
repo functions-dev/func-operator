@@ -29,7 +29,6 @@ import (
 	. "github.com/onsi/gomega"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/apimachinery/pkg/util/rand"
 )
 
 // The bundle e2e test run with a dedicated build tag to not infer with the other tests, as the bundle offers different
@@ -41,6 +40,7 @@ var _ = Describe("Bundle", Label("bundle"), Ordered, func() {
 		bundleImage string // set in BeforeAll
 
 		namespaces []string
+		repoURLs   []string
 	)
 
 	SetDefaultEventuallyTimeout(5 * time.Minute)
@@ -81,7 +81,7 @@ var _ = Describe("Bundle", Label("bundle"), Ordered, func() {
 	Context("with OwnNamespace installMode", func() {
 
 		BeforeAll(func() {
-			namespaces = createMultipleNamespaceAndDeployFunction(2)
+			namespaces, repoURLs = createMultipleNamespaceAndDeployFunction(2)
 
 			By("Installing the operator into " + namespaces[0])
 			out, err := utils.OperatorSdkRun("run", "bundle",
@@ -109,17 +109,17 @@ var _ = Describe("Bundle", Label("bundle"), Ordered, func() {
 		})
 
 		It("should reconcile function in own namespace", func() {
-			CreateFunctionAndWaitForReady(namespaces[0])
+			CreateFunctionAndWaitForReady(namespaces[0], repoURLs[0])
 		})
 		It("should not reconcile function in other namespace", func() {
-			CreateFunctionAndWaitForConsistentlyNotReconciled(namespaces[1])
+			CreateFunctionAndWaitForConsistentlyNotReconciled(namespaces[1], repoURLs[1])
 		})
 	})
 
 	Context("with SingleNamespace installMode", func() {
 		BeforeAll(func() {
 			By("Setting up test namespaces")
-			namespaces = createMultipleNamespaceAndDeployFunction(3)
+			namespaces, repoURLs = createMultipleNamespaceAndDeployFunction(3)
 
 			By("Installing the operator into " + namespaces[0] + " for " + namespaces[1])
 			out, err := utils.OperatorSdkRun("run", "bundle",
@@ -147,18 +147,18 @@ var _ = Describe("Bundle", Label("bundle"), Ordered, func() {
 		})
 
 		It("should reconcile function in dedicated namespace", func() {
-			CreateFunctionAndWaitForReady(namespaces[1])
+			CreateFunctionAndWaitForReady(namespaces[1], repoURLs[1])
 		})
 		It("should not reconcile function in other namespace", func() {
-			CreateFunctionAndWaitForConsistentlyNotReconciled(namespaces[0])
-			CreateFunctionAndWaitForConsistentlyNotReconciled(namespaces[2])
+			CreateFunctionAndWaitForConsistentlyNotReconciled(namespaces[0], repoURLs[0])
+			CreateFunctionAndWaitForConsistentlyNotReconciled(namespaces[2], repoURLs[2])
 		})
 	})
 
 	Context("with MultiNamespace installMode", func() {
 		BeforeAll(func() {
 			By("Setting up test namespaces")
-			namespaces = createMultipleNamespaceAndDeployFunction(4)
+			namespaces, repoURLs = createMultipleNamespaceAndDeployFunction(4)
 
 			By("Installing the operator into " + namespaces[0] + " for " + namespaces[1] + " and " + namespaces[2])
 			out, err := utils.OperatorSdkRun("run", "bundle",
@@ -186,19 +186,19 @@ var _ = Describe("Bundle", Label("bundle"), Ordered, func() {
 		})
 
 		It("should reconcile function in dedicated namespaces", func() {
-			CreateFunctionAndWaitForReady(namespaces[1])
-			CreateFunctionAndWaitForReady(namespaces[2])
+			CreateFunctionAndWaitForReady(namespaces[1], repoURLs[1])
+			CreateFunctionAndWaitForReady(namespaces[2], repoURLs[2])
 		})
 		It("should not reconcile function in other namespace", func() {
 			CreateFunctionAndWaitForConsistentlyNotReconciled(namespaces[0])
-			CreateFunctionAndWaitForConsistentlyNotReconciled(namespaces[3])
+			CreateFunctionAndWaitForConsistentlyNotReconciled(namespaces[3], repoURLs[3])
 		})
 	})
 
 	Context("with two instances with SingleNamespace installMode installed into two distinct namespaces", func() {
 		BeforeAll(func() {
 			By("Setting up test namespaces")
-			namespaces = createMultipleNamespaceAndDeployFunction(4)
+			namespaces, repoURLs = createMultipleNamespaceAndDeployFunction(4)
 
 			By("Installing the operator into " + namespaces[0] + " for " + namespaces[1])
 			out, err := utils.OperatorSdkRun("run", "bundle",
@@ -243,19 +243,19 @@ var _ = Describe("Bundle", Label("bundle"), Ordered, func() {
 		})
 
 		It("should reconcile function in dedicated namespaces", func() {
-			CreateFunctionAndWaitForReady(namespaces[1])
-			CreateFunctionAndWaitForReady(namespaces[3])
+			CreateFunctionAndWaitForReady(namespaces[1], repoURLs[1])
+			CreateFunctionAndWaitForReady(namespaces[3], repoURLs[3])
 		})
 		It("should not reconcile function in other namespace", func() {
-			CreateFunctionAndWaitForConsistentlyNotReconciled(namespaces[0])
-			CreateFunctionAndWaitForConsistentlyNotReconciled(namespaces[2])
+			CreateFunctionAndWaitForConsistentlyNotReconciled(namespaces[0], repoURLs[0])
+			CreateFunctionAndWaitForConsistentlyNotReconciled(namespaces[2], repoURLs[2])
 		})
 	})
 
 	Context("with AllNamespace installMode", func() {
 		BeforeAll(func() {
 			By("Setting up test namespaces")
-			namespaces = createMultipleNamespaceAndDeployFunction(2)
+			namespaces, repoURLs = createMultipleNamespaceAndDeployFunction(2)
 
 			By("Installing the operator into " + namespaces[0])
 			out, err := utils.OperatorSdkRun("run", "bundle",
@@ -283,13 +283,13 @@ var _ = Describe("Bundle", Label("bundle"), Ordered, func() {
 		})
 
 		It("should reconcile function in all namespaces", func() {
-			CreateFunctionAndWaitForReady(namespaces[0])
-			CreateFunctionAndWaitForReady(namespaces[1])
+			CreateFunctionAndWaitForReady(namespaces[0], repoURLs[0])
+			CreateFunctionAndWaitForReady(namespaces[1], repoURLs[1])
 		})
 	})
 })
 
-func CreateFunctionAndWaitForReady(namespace string) {
+func CreateFunctionAndWaitForReady(namespace, repoURL string) {
 	// Create a Function resource
 	function := &functionsdevv1alpha1.Function{
 		ObjectMeta: metav1.ObjectMeta{
@@ -298,7 +298,7 @@ func CreateFunctionAndWaitForReady(namespace string) {
 		},
 		Spec: functionsdevv1alpha1.FunctionSpec{
 			Source: functionsdevv1alpha1.FunctionSpecSource{
-				RepositoryURL: "https://github.com/creydr/func-go-hello-world",
+				RepositoryURL: repoURL,
 			},
 			Registry: functionsdevv1alpha1.FunctionSpecRegistry{
 				Path:     registry,
@@ -327,7 +327,7 @@ func CreateFunctionAndWaitForReady(namespace string) {
 	Eventually(funcBecomeReady, 5*time.Minute).Should(Succeed())
 }
 
-func CreateFunctionAndWaitForConsistentlyNotReconciled(namespace string) {
+func CreateFunctionAndWaitForConsistentlyNotReconciled(namespace, repoURL string) {
 	// Create a Function resource
 	function := &functionsdevv1alpha1.Function{
 		ObjectMeta: metav1.ObjectMeta{
@@ -336,7 +336,7 @@ func CreateFunctionAndWaitForConsistentlyNotReconciled(namespace string) {
 		},
 		Spec: functionsdevv1alpha1.FunctionSpec{
 			Source: functionsdevv1alpha1.FunctionSpecSource{
-				RepositoryURL: "https://github.com/creydr/func-go-hello-world",
+				RepositoryURL: repoURL,
 			},
 			Registry: functionsdevv1alpha1.FunctionSpecRegistry{
 				Path:     registry,
@@ -360,19 +360,28 @@ func CreateFunctionAndWaitForConsistentlyNotReconciled(namespace string) {
 	Consistently(funcNotReconciled, time.Minute).Should(Succeed())
 }
 
-func createNamespaceAndDeployFunction() string {
-	ns, err := utils.GetTestNamespace()
+func createNamespaceAndDeployFunction() (ns, repoURL string) {
+	var err error
+	ns, err = utils.GetTestNamespace()
 	Expect(err).NotTo(HaveOccurred())
 
-	tempDir := fmt.Sprintf("%s/func-operator-e2e-%s", os.TempDir(), rand.String(10))
+	// Create repository provider resources
+	username, password, _, cleanup, err := repoProvider.CreateRandomUser()
 	Expect(err).NotTo(HaveOccurred())
+	DeferCleanup(cleanup)
 
-	cmd := exec.Command("git", "clone", "https://github.com/creydr/func-go-hello-world", tempDir)
-	_, err = utils.Run(cmd)
+	_, repoURL, cleanup, err = repoProvider.CreateRandomRepo(username, false)
 	Expect(err).NotTo(HaveOccurred())
+	DeferCleanup(cleanup)
 
-	cmd = exec.Command("func", "deploy",
-		"--path", tempDir,
+	// Initialize repo with function code
+	repoDir, err := InitializeRepoWithFunction(repoURL, username, password, "go")
+	Expect(err).NotTo(HaveOccurred())
+	DeferCleanup(os.RemoveAll, repoDir)
+
+	// Deploy function
+	cmd := exec.Command("func", "deploy",
+		"--path", repoDir,
 		"--registry", registry,
 		"--registry-insecure", strconv.FormatBool(registryInsecure),
 		"--namespace", ns)
@@ -380,24 +389,20 @@ func createNamespaceAndDeployFunction() string {
 	Expect(err).NotTo(HaveOccurred())
 	_, _ = fmt.Fprint(GinkgoWriter, out)
 
-	// cleanup the repo to not run into resource issues
-	cmd = exec.Command("rm", "-rf", tempDir)
-	_, err = utils.Run(cmd)
-	Expect(err).NotTo(HaveOccurred())
-
-	return ns
+	return ns, repoURL
 }
 
 // createMultipleNamespaceAndDeployFunction creates multiple namespaces with functions
-func createMultipleNamespaceAndDeployFunction(count int) []string {
-	namespaces := make([]string, count)
+func createMultipleNamespaceAndDeployFunction(count int) (namespaces, repoURLs []string) {
+	namespaces = make([]string, count)
+	repoURLs = make([]string, count)
 
 	for i := 0; i < count; i++ {
 		// parallelizing this via goroutines seems to lead to resource issues, therefore keeping it sequential
-		namespaces[i] = createNamespaceAndDeployFunction()
+		namespaces[i], repoURLs[i] = createNamespaceAndDeployFunction()
 	}
 
-	return namespaces
+	return namespaces, repoURLs
 }
 
 func cleanupNamespaces(namespaces []string) {
