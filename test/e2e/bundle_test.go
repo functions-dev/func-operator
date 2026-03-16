@@ -34,13 +34,18 @@ import (
 // The bundle e2e test run with a dedicated build tag to not infer with the other tests, as the bundle offers different
 // installation modes and also can make the operator to run in multiple namespaces
 
+// TestNamespace represents a test namespace with its associated repository
+type TestNamespace struct {
+	Name    string
+	RepoURL string
+}
+
 var _ = Describe("Bundle", Label("bundle"), Ordered, func() {
 
 	var (
 		bundleImage string // set in BeforeAll
 
-		namespaces []string
-		repoURLs   []string
+		testNamespaces []TestNamespace
 	)
 
 	SetDefaultEventuallyTimeout(5 * time.Minute)
@@ -56,9 +61,9 @@ var _ = Describe("Bundle", Label("bundle"), Ordered, func() {
 		if specReport.Failed() {
 			// collect logs in case it failed
 			By("Collecting logs from deployed operators")
-			for _, ns := range namespaces {
-				By("Logs from operator in namespace " + ns)
-				cmd := exec.Command("kubectl", "logs", "-l", "control-plane=controller-manager", "--namespace", ns)
+			for _, testNs := range testNamespaces {
+				By("Logs from operator in namespace " + testNs.Name)
+				cmd := exec.Command("kubectl", "logs", "-l", "control-plane=controller-manager", "--namespace", testNs.Name)
 				controllerLogs, err := utils.Run(cmd)
 				if err == nil {
 					_, _ = fmt.Fprintf(GinkgoWriter, "Controller logs:\n %s", controllerLogs)
@@ -81,11 +86,11 @@ var _ = Describe("Bundle", Label("bundle"), Ordered, func() {
 	Context("with OwnNamespace installMode", func() {
 
 		BeforeAll(func() {
-			namespaces, repoURLs = createMultipleNamespaceAndDeployFunction(2)
+			testNamespaces = createMultipleNamespaceAndDeployFunction(2)
 
-			By("Installing the operator into " + namespaces[0])
+			By("Installing the operator into " + testNamespaces[0].Name)
 			out, err := utils.OperatorSdkRun("run", "bundle",
-				"--namespace", namespaces[0],
+				"--namespace", testNamespaces[0].Name,
 				"--install-mode", "OwnNamespace",
 				fmt.Sprintf("--skip-tls-verify=%v", registryInsecure),
 				bundleImage)
@@ -99,32 +104,32 @@ var _ = Describe("Bundle", Label("bundle"), Ordered, func() {
 				By("Uninstalling the operator")
 				out, err := utils.OperatorSdkRun("cleanup",
 					"func-operator",
-					"--namespace", namespaces[0])
+					"--namespace", testNamespaces[0].Name)
 				Expect(err).NotTo(HaveOccurred())
 				_, _ = fmt.Fprint(GinkgoWriter, out)
 
 				By("Cleanup resources")
-				cleanupNamespaces(namespaces)
+				cleanupNamespaces(testNamespaces)
 			}
 		})
 
 		It("should reconcile function in own namespace", func() {
-			CreateFunctionAndWaitForReady(namespaces[0], repoURLs[0])
+			CreateFunctionAndWaitForReady(testNamespaces[0])
 		})
 		It("should not reconcile function in other namespace", func() {
-			CreateFunctionAndWaitForConsistentlyNotReconciled(namespaces[1], repoURLs[1])
+			CreateFunctionAndWaitForConsistentlyNotReconciled(testNamespaces[1])
 		})
 	})
 
 	Context("with SingleNamespace installMode", func() {
 		BeforeAll(func() {
 			By("Setting up test namespaces")
-			namespaces, repoURLs = createMultipleNamespaceAndDeployFunction(3)
+			testNamespaces = createMultipleNamespaceAndDeployFunction(3)
 
-			By("Installing the operator into " + namespaces[0] + " for " + namespaces[1])
+			By("Installing the operator into " + testNamespaces[0].Name + " for " + testNamespaces[1].Name)
 			out, err := utils.OperatorSdkRun("run", "bundle",
-				"--namespace", namespaces[0],
-				"--install-mode", fmt.Sprintf("SingleNamespace=%s", namespaces[1]),
+				"--namespace", testNamespaces[0].Name,
+				"--install-mode", fmt.Sprintf("SingleNamespace=%s", testNamespaces[1].Name),
 				fmt.Sprintf("--skip-tls-verify=%v", registryInsecure),
 				bundleImage)
 			Expect(err).NotTo(HaveOccurred())
@@ -137,33 +142,33 @@ var _ = Describe("Bundle", Label("bundle"), Ordered, func() {
 				By("Uninstalling the operator")
 				out, err := utils.OperatorSdkRun("cleanup",
 					"func-operator",
-					"--namespace", namespaces[0])
+					"--namespace", testNamespaces[0].Name)
 				Expect(err).NotTo(HaveOccurred())
 				_, _ = fmt.Fprint(GinkgoWriter, out)
 
 				By("Cleanup resources")
-				cleanupNamespaces(namespaces)
+				cleanupNamespaces(testNamespaces)
 			}
 		})
 
 		It("should reconcile function in dedicated namespace", func() {
-			CreateFunctionAndWaitForReady(namespaces[1], repoURLs[1])
+			CreateFunctionAndWaitForReady(testNamespaces[1])
 		})
 		It("should not reconcile function in other namespace", func() {
-			CreateFunctionAndWaitForConsistentlyNotReconciled(namespaces[0], repoURLs[0])
-			CreateFunctionAndWaitForConsistentlyNotReconciled(namespaces[2], repoURLs[2])
+			CreateFunctionAndWaitForConsistentlyNotReconciled(testNamespaces[0])
+			CreateFunctionAndWaitForConsistentlyNotReconciled(testNamespaces[2])
 		})
 	})
 
 	Context("with MultiNamespace installMode", func() {
 		BeforeAll(func() {
 			By("Setting up test namespaces")
-			namespaces, repoURLs = createMultipleNamespaceAndDeployFunction(4)
+			testNamespaces = createMultipleNamespaceAndDeployFunction(4)
 
-			By("Installing the operator into " + namespaces[0] + " for " + namespaces[1] + " and " + namespaces[2])
+			By("Installing the operator into " + testNamespaces[0].Name + " for " + testNamespaces[1].Name + " and " + testNamespaces[2].Name)
 			out, err := utils.OperatorSdkRun("run", "bundle",
-				"--namespace", namespaces[0],
-				"--install-mode", fmt.Sprintf("MultiNamespace=%s,%s", namespaces[1], namespaces[2]),
+				"--namespace", testNamespaces[0].Name,
+				"--install-mode", fmt.Sprintf("MultiNamespace=%s,%s", testNamespaces[1].Name, testNamespaces[2].Name),
 				fmt.Sprintf("--skip-tls-verify=%v", registryInsecure),
 				bundleImage)
 			Expect(err).NotTo(HaveOccurred())
@@ -176,43 +181,43 @@ var _ = Describe("Bundle", Label("bundle"), Ordered, func() {
 				By("Uninstalling the operator")
 				out, err := utils.OperatorSdkRun("cleanup",
 					"func-operator",
-					"--namespace", namespaces[0])
+					"--namespace", testNamespaces[0].Name)
 				Expect(err).NotTo(HaveOccurred())
 				_, _ = fmt.Fprint(GinkgoWriter, out)
 
 				By("Cleanup resources")
-				cleanupNamespaces(namespaces)
+				cleanupNamespaces(testNamespaces)
 			}
 		})
 
 		It("should reconcile function in dedicated namespaces", func() {
-			CreateFunctionAndWaitForReady(namespaces[1], repoURLs[1])
-			CreateFunctionAndWaitForReady(namespaces[2], repoURLs[2])
+			CreateFunctionAndWaitForReady(testNamespaces[1])
+			CreateFunctionAndWaitForReady(testNamespaces[2])
 		})
 		It("should not reconcile function in other namespace", func() {
-			CreateFunctionAndWaitForConsistentlyNotReconciled(namespaces[0])
-			CreateFunctionAndWaitForConsistentlyNotReconciled(namespaces[3], repoURLs[3])
+			CreateFunctionAndWaitForConsistentlyNotReconciled(testNamespaces[0])
+			CreateFunctionAndWaitForConsistentlyNotReconciled(testNamespaces[3])
 		})
 	})
 
 	Context("with two instances with SingleNamespace installMode installed into two distinct namespaces", func() {
 		BeforeAll(func() {
 			By("Setting up test namespaces")
-			namespaces, repoURLs = createMultipleNamespaceAndDeployFunction(4)
+			testNamespaces = createMultipleNamespaceAndDeployFunction(4)
 
-			By("Installing the operator into " + namespaces[0] + " for " + namespaces[1])
+			By("Installing the operator into " + testNamespaces[0].Name + " for " + testNamespaces[1].Name)
 			out, err := utils.OperatorSdkRun("run", "bundle",
-				"--namespace", namespaces[0],
-				"--install-mode", fmt.Sprintf("SingleNamespace=%s", namespaces[1]),
+				"--namespace", testNamespaces[0].Name,
+				"--install-mode", fmt.Sprintf("SingleNamespace=%s", testNamespaces[1].Name),
 				fmt.Sprintf("--skip-tls-verify=%v", registryInsecure),
 				bundleImage)
 			Expect(err).NotTo(HaveOccurred())
 			_, _ = fmt.Fprint(GinkgoWriter, out)
 
-			By("Installing the operator into " + namespaces[2] + " for " + namespaces[3])
+			By("Installing the operator into " + testNamespaces[2].Name + " for " + testNamespaces[3].Name)
 			out, err = utils.OperatorSdkRun("run", "bundle",
-				"--namespace", namespaces[2],
-				"--install-mode", fmt.Sprintf("SingleNamespace=%s", namespaces[3]),
+				"--namespace", testNamespaces[2].Name,
+				"--install-mode", fmt.Sprintf("SingleNamespace=%s", testNamespaces[3].Name),
 				fmt.Sprintf("--skip-tls-verify=%v", registryInsecure),
 				bundleImage)
 			Expect(err).NotTo(HaveOccurred())
@@ -222,44 +227,44 @@ var _ = Describe("Bundle", Label("bundle"), Ordered, func() {
 		AfterAll(func() {
 			specReport := CurrentSpecReport()
 			if !specReport.Failed() {
-				By("Uninstalling the operator from " + namespaces[0])
+				By("Uninstalling the operator from " + testNamespaces[0].Name)
 				out, err := utils.OperatorSdkRun("cleanup",
 					"func-operator",
-					"--namespace", namespaces[0],
+					"--namespace", testNamespaces[0].Name,
 					"--delete-operator-groups") // dont delete CRDs, as operator in ns3 still has them
 				Expect(err).NotTo(HaveOccurred())
 				_, _ = fmt.Fprint(GinkgoWriter, out)
 
-				By("Uninstalling the operator from " + namespaces[2])
+				By("Uninstalling the operator from " + testNamespaces[2].Name)
 				out, err = utils.OperatorSdkRun("cleanup",
 					"func-operator",
-					"--namespace", namespaces[2])
+					"--namespace", testNamespaces[2].Name)
 				Expect(err).NotTo(HaveOccurred())
 				_, _ = fmt.Fprint(GinkgoWriter, out)
 
 				By("Cleanup resources")
-				cleanupNamespaces(namespaces)
+				cleanupNamespaces(testNamespaces)
 			}
 		})
 
 		It("should reconcile function in dedicated namespaces", func() {
-			CreateFunctionAndWaitForReady(namespaces[1], repoURLs[1])
-			CreateFunctionAndWaitForReady(namespaces[3], repoURLs[3])
+			CreateFunctionAndWaitForReady(testNamespaces[1])
+			CreateFunctionAndWaitForReady(testNamespaces[3])
 		})
 		It("should not reconcile function in other namespace", func() {
-			CreateFunctionAndWaitForConsistentlyNotReconciled(namespaces[0], repoURLs[0])
-			CreateFunctionAndWaitForConsistentlyNotReconciled(namespaces[2], repoURLs[2])
+			CreateFunctionAndWaitForConsistentlyNotReconciled(testNamespaces[0])
+			CreateFunctionAndWaitForConsistentlyNotReconciled(testNamespaces[2])
 		})
 	})
 
 	Context("with AllNamespace installMode", func() {
 		BeforeAll(func() {
 			By("Setting up test namespaces")
-			namespaces, repoURLs = createMultipleNamespaceAndDeployFunction(2)
+			testNamespaces = createMultipleNamespaceAndDeployFunction(2)
 
-			By("Installing the operator into " + namespaces[0])
+			By("Installing the operator into " + testNamespaces[0].Name)
 			out, err := utils.OperatorSdkRun("run", "bundle",
-				"--namespace", namespaces[0],
+				"--namespace", testNamespaces[0].Name,
 				"--install-mode", "AllNamespaces",
 				fmt.Sprintf("--skip-tls-verify=%v", registryInsecure),
 				bundleImage)
@@ -273,32 +278,32 @@ var _ = Describe("Bundle", Label("bundle"), Ordered, func() {
 				By("Uninstalling the operator")
 				out, err := utils.OperatorSdkRun("cleanup",
 					"func-operator",
-					"--namespace", namespaces[0])
+					"--namespace", testNamespaces[0].Name)
 				Expect(err).NotTo(HaveOccurred())
 				_, _ = fmt.Fprint(GinkgoWriter, out)
 
 				By("Cleanup resources")
-				cleanupNamespaces(namespaces)
+				cleanupNamespaces(testNamespaces)
 			}
 		})
 
 		It("should reconcile function in all namespaces", func() {
-			CreateFunctionAndWaitForReady(namespaces[0], repoURLs[0])
-			CreateFunctionAndWaitForReady(namespaces[1], repoURLs[1])
+			CreateFunctionAndWaitForReady(testNamespaces[0])
+			CreateFunctionAndWaitForReady(testNamespaces[1])
 		})
 	})
 })
 
-func CreateFunctionAndWaitForReady(namespace, repoURL string) {
+func CreateFunctionAndWaitForReady(testNs TestNamespace) {
 	// Create a Function resource
 	function := &functionsdevv1alpha1.Function{
 		ObjectMeta: metav1.ObjectMeta{
 			GenerateName: "my-function-",
-			Namespace:    namespace,
+			Namespace:    testNs.Name,
 		},
 		Spec: functionsdevv1alpha1.FunctionSpec{
 			Source: functionsdevv1alpha1.FunctionSpecSource{
-				RepositoryURL: repoURL,
+				RepositoryURL: testNs.RepoURL,
 			},
 			Registry: functionsdevv1alpha1.FunctionSpecRegistry{
 				Path:     registry,
@@ -327,16 +332,16 @@ func CreateFunctionAndWaitForReady(namespace, repoURL string) {
 	Eventually(funcBecomeReady, 5*time.Minute).Should(Succeed())
 }
 
-func CreateFunctionAndWaitForConsistentlyNotReconciled(namespace, repoURL string) {
+func CreateFunctionAndWaitForConsistentlyNotReconciled(testNs TestNamespace) {
 	// Create a Function resource
 	function := &functionsdevv1alpha1.Function{
 		ObjectMeta: metav1.ObjectMeta{
 			GenerateName: "my-function-",
-			Namespace:    namespace,
+			Namespace:    testNs.Name,
 		},
 		Spec: functionsdevv1alpha1.FunctionSpec{
 			Source: functionsdevv1alpha1.FunctionSpecSource{
-				RepositoryURL: repoURL,
+				RepositoryURL: testNs.RepoURL,
 			},
 			Registry: functionsdevv1alpha1.FunctionSpecRegistry{
 				Path:     registry,
@@ -360,9 +365,9 @@ func CreateFunctionAndWaitForConsistentlyNotReconciled(namespace, repoURL string
 	Consistently(funcNotReconciled, time.Minute).Should(Succeed())
 }
 
-func createNamespaceAndDeployFunction() (ns, repoURL string) {
+func createNamespaceAndDeployFunction() TestNamespace {
 	var err error
-	ns, err = utils.GetTestNamespace()
+	ns, err := utils.GetTestNamespace()
 	Expect(err).NotTo(HaveOccurred())
 
 	// Create repository provider resources
@@ -370,7 +375,7 @@ func createNamespaceAndDeployFunction() (ns, repoURL string) {
 	Expect(err).NotTo(HaveOccurred())
 	DeferCleanup(cleanup)
 
-	_, repoURL, cleanup, err = repoProvider.CreateRandomRepo(username, false)
+	_, repoURL, cleanup, err := repoProvider.CreateRandomRepo(username, false)
 	Expect(err).NotTo(HaveOccurred())
 	DeferCleanup(cleanup)
 
@@ -389,26 +394,25 @@ func createNamespaceAndDeployFunction() (ns, repoURL string) {
 	Expect(err).NotTo(HaveOccurred())
 	_, _ = fmt.Fprint(GinkgoWriter, out)
 
-	return ns, repoURL
+	return TestNamespace{Name: ns, RepoURL: repoURL}
 }
 
 // createMultipleNamespaceAndDeployFunction creates multiple namespaces with functions
-func createMultipleNamespaceAndDeployFunction(count int) (namespaces, repoURLs []string) {
-	namespaces = make([]string, count)
-	repoURLs = make([]string, count)
+func createMultipleNamespaceAndDeployFunction(count int) []TestNamespace {
+	testNamespaces := make([]TestNamespace, count)
 
 	for i := 0; i < count; i++ {
 		// parallelizing this via goroutines seems to lead to resource issues, therefore keeping it sequential
-		namespaces[i], repoURLs[i] = createNamespaceAndDeployFunction()
+		testNamespaces[i] = createNamespaceAndDeployFunction()
 	}
 
-	return namespaces, repoURLs
+	return testNamespaces
 }
 
-func cleanupNamespaces(namespaces []string) {
+func cleanupNamespaces(testNamespaces []TestNamespace) {
 	By("Cleaning up all resources")
-	for _, ns := range namespaces {
-		cmd := exec.Command("kubectl", "delete", "namespace", ns, "--ignore-not-found")
+	for _, testNs := range testNamespaces {
+		cmd := exec.Command("kubectl", "delete", "namespace", testNs.Name, "--ignore-not-found")
 		_, err := utils.Run(cmd)
 		Expect(err).NotTo(HaveOccurred())
 	}
