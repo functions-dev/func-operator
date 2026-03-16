@@ -31,6 +31,22 @@ const (
 	giteaAdminPass = "giteapass"
 )
 
+// RepositoryProvider defines the interface for interacting with Git repository hosting providers
+type RepositoryProvider interface {
+	// User management
+	CreateUser(username, password, email string) error
+	DeleteUser(username string) error
+	CreateRandomUser() (username, password, email string, err error)
+
+	// Repository management
+	CreateRepo(owner, name string, private bool) (string, error)
+	DeleteRepo(owner, name string) error
+	CreateRandomRepo(owner string, private bool) (name, url string, err error)
+
+	// Authentication
+	CreateAccessToken(username, password, tokenName string) (string, error)
+}
+
 // GiteaClient wraps the Gitea SDK client and provides helper methods
 type GiteaClient struct {
 	client    *gitea.Client
