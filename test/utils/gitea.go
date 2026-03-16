@@ -101,10 +101,12 @@ func NewGiteaClient() (*GiteaClient, error) {
 
 // CreateUser creates a new Gitea user
 func (g *GiteaClient) CreateUser(username, password, email string) (cleanup func(), err error) {
+	mustChangePassword := false
 	_, _, err = g.client.AdminCreateUser(gitea.CreateUserOption{
-		Username: username,
-		Password: password,
-		Email:    email,
+		Username:           username,
+		Password:           password,
+		Email:              email,
+		MustChangePassword: &mustChangePassword,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to create user %s: %w", username, err)
@@ -137,7 +139,8 @@ func (g *GiteaClient) CreateRandomUser() (username, password, email string, clea
 
 // CreateRepo creates a new repository and returns its URL
 func (g *GiteaClient) CreateRepo(owner, name string, private bool) (url string, cleanup func(), err error) {
-	_, _, err = g.client.CreateRepo(gitea.CreateRepoOption{
+	// Use admin client to create repo for the specified owner
+	_, _, err = g.client.AdminCreateRepo(owner, gitea.CreateRepoOption{
 		Name:    name,
 		Private: private,
 	})

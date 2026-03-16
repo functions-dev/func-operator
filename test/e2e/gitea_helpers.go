@@ -32,34 +32,52 @@ func buildAuthURL(repoURL, username, password string) string {
 		fmt.Sprintf("http://%s:%s@", username, password), 1)
 }
 
-// InitializeRepoWithFunction clones an empty Gitea repo, initializes a function, and pushes it
+// InitializeRepoWithFunction creates a function project and pushes it to the Gitea repo
 func InitializeRepoWithFunction(repoURL, username, password, language string) (repoDir string, err error) {
 	repoDir = fmt.Sprintf("%s/func-test-%s", os.TempDir(), rand.String(10))
 
 	// Build authenticated URL
 	authURL := buildAuthURL(repoURL, username, password)
 
-	// Clone empty repo
-	cmd := exec.Command("git", "clone", authURL, repoDir)
-	if _, err = utils.Run(cmd); err != nil {
-		return "", fmt.Errorf("failed to clone repo: %w", err)
-	}
-
-	// Initialize function
-	cmd = exec.Command("func", "init", "-l", language)
-	cmd.Dir = repoDir
+	// Initialize function (func init creates the directory)
+	cmd := exec.Command("func", "init", "-l", language, repoDir)
 	if _, err = utils.Run(cmd); err != nil {
 		return "", fmt.Errorf("failed to init function: %w", err)
 	}
 
+	// Initialize git repo
+	cmd = exec.Command("git", "-C", repoDir, "init")
+	if _, err = utils.Run(cmd); err != nil {
+		return "", fmt.Errorf("failed to git init: %w", err)
+	}
+
+	// Configure git user
+	cmd = exec.Command("git", "-C", repoDir, "config", "user.name", "Test User")
+	if _, err = utils.Run(cmd); err != nil {
+		return "", fmt.Errorf("failed to set git user.name: %w", err)
+	}
+	cmd = exec.Command("git", "-C", repoDir, "config", "user.email", "test@example.com")
+	if _, err = utils.Run(cmd); err != nil {
+		return "", fmt.Errorf("failed to set git user.email: %w", err)
+	}
+
+	// Add remote
+	cmd = exec.Command("git", "-C", repoDir, "remote", "add", "origin", authURL)
+	if _, err = utils.Run(cmd); err != nil {
+		return "", fmt.Errorf("failed to add remote: %w", err)
+	}
+
 	// Commit and push
-	if err = exec.Command("git", "-C", repoDir, "add", ".").Run(); err != nil {
+	cmd = exec.Command("git", "-C", repoDir, "add", ".")
+	if _, err = utils.Run(cmd); err != nil {
 		return "", fmt.Errorf("failed to git add: %w", err)
 	}
-	if err = exec.Command("git", "-C", repoDir, "commit", "-m", "Initial function").Run(); err != nil {
+	cmd = exec.Command("git", "-C", repoDir, "commit", "-m", "Initial function")
+	if _, err = utils.Run(cmd); err != nil {
 		return "", fmt.Errorf("failed to git commit: %w", err)
 	}
-	if err = exec.Command("git", "-C", repoDir, "push").Run(); err != nil {
+	cmd = exec.Command("git", "-C", repoDir, "push", "-u", "origin", "main")
+	if _, err = utils.Run(cmd); err != nil {
 		return "", fmt.Errorf("failed to push initial commit: %w", err)
 	}
 
@@ -70,24 +88,28 @@ func InitializeRepoWithFunction(repoURL, username, password, language string) (r
 // Requires at least one file to be specified
 func CommitAndPush(repoDir string, msg string, file string, otherFiles ...string) error {
 	// Add first file
-	if err := exec.Command("git", "-C", repoDir, "add", file).Run(); err != nil {
+	cmd := exec.Command("git", "-C", repoDir, "add", file)
+	if _, err := utils.Run(cmd); err != nil {
 		return fmt.Errorf("failed to git add %s: %w", file, err)
 	}
 
 	// Add other files if provided
 	for _, f := range otherFiles {
-		if err := exec.Command("git", "-C", repoDir, "add", f).Run(); err != nil {
+		cmd = exec.Command("git", "-C", repoDir, "add", f)
+		if _, err := utils.Run(cmd); err != nil {
 			return fmt.Errorf("failed to git add %s: %w", f, err)
 		}
 	}
 
 	// Commit
-	if err := exec.Command("git", "-C", repoDir, "commit", "-m", msg).Run(); err != nil {
+	cmd = exec.Command("git", "-C", repoDir, "commit", "-m", msg)
+	if _, err := utils.Run(cmd); err != nil {
 		return fmt.Errorf("failed to git commit: %w", err)
 	}
 
 	// Push
-	if err := exec.Command("git", "-C", repoDir, "push").Run(); err != nil {
+	cmd = exec.Command("git", "-C", repoDir, "push")
+	if _, err := utils.Run(cmd); err != nil {
 		return fmt.Errorf("failed to push: %w", err)
 	}
 

@@ -153,19 +153,25 @@ var _ = Describe("Operator", Ordered, func() {
 	})
 	Context("with a not yet deployed function", func() {
 		var repoURL    string
+		var repoDir    string
 		var functionName, functionNamespace string
 
 		BeforeEach(func() {
 			var err error
 
-			// Create repository but don't deploy
-			username, _, _, cleanup, err := repoProvider.CreateRandomUser()
+			// Create repository with function code but don't deploy
+			username, password, _, cleanup, err := repoProvider.CreateRandomUser()
 			Expect(err).NotTo(HaveOccurred())
 			DeferCleanup(cleanup)
 
 			_, repoURL, cleanup, err = repoProvider.CreateRandomRepo(username, false)
 			Expect(err).NotTo(HaveOccurred())
 			DeferCleanup(cleanup)
+
+			// Initialize repository with function code
+			repoDir, err = InitializeRepoWithFunction(repoURL, username, password, "go")
+			Expect(err).NotTo(HaveOccurred())
+			DeferCleanup(os.RemoveAll, repoDir)
 		})
 
 		AfterEach(func() {
