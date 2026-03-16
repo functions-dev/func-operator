@@ -161,3 +161,22 @@ func (g *GiteaClient) CreateRandomRepo(owner string, private bool) (name, url st
 	url, err = g.CreateRepo(owner, name, private)
 	return name, url, err
 }
+
+// CreateAccessToken creates a personal access token for a user
+func (g *GiteaClient) CreateAccessToken(username, password, tokenName string) (string, error) {
+	// Create a client authenticated as the user
+	userClient, err := gitea.NewClient(g.baseURL, gitea.SetBasicAuth(username, password))
+	if err != nil {
+		return "", fmt.Errorf("failed to create user client: %w", err)
+	}
+
+	// Create token
+	token, _, err := userClient.CreateAccessToken(gitea.CreateAccessTokenOption{
+		Name: tokenName,
+	})
+	if err != nil {
+		return "", fmt.Errorf("failed to create access token for %s: %w", username, err)
+	}
+
+	return token.Token, nil
+}
