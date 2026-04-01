@@ -39,13 +39,12 @@ func InitializeRepoWithFunction(repoURL, username, password, language string) (r
 	authURL := buildAuthURL(repoURL, username, password)
 
 	// Initialize function (func init creates the directory)
-	cmd := exec.Command("func", "init", "-l", language, repoDir)
-	if _, err = Run(cmd); err != nil {
+	if _, err = RunFunc("init", "-l", language, repoDir); err != nil {
 		return "", fmt.Errorf("failed to init function: %w", err)
 	}
 
 	// Initialize git repo with main as default branch
-	cmd = exec.Command("git", "-C", repoDir, "init", "-b", "main")
+	cmd := exec.Command("git", "-C", repoDir, "init", "-b", "main")
 	if _, err = Run(cmd); err != nil {
 		return "", fmt.Errorf("failed to git init: %w", err)
 	}

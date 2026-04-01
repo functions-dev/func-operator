@@ -63,19 +63,17 @@ var _ = Describe("Operator", func() {
 			DeferCleanup(cleanupNamespaces, functionNamespace)
 
 			// Deploy function using func CLI
-			cmd := exec.Command("func", "deploy",
+			out, err := utils.RunFunc("deploy",
 				"--namespace", functionNamespace,
 				"--path", repoDir,
 				"--registry", registry,
 				"--registry-insecure", strconv.FormatBool(registryInsecure))
-			out, err := utils.Run(cmd)
 			Expect(err).NotTo(HaveOccurred())
 			_, _ = fmt.Fprint(GinkgoWriter, out)
 
 			// Cleanup func deployment
 			DeferCleanup(func() {
-				cmd := exec.Command("func", "delete", "--path", repoDir, "--namespace", functionNamespace)
-				_, _ = utils.Run(cmd)
+				_, _ = utils.RunFunc("delete", "--path", repoDir, "--namespace", functionNamespace)
 			})
 
 			// Commit func.yaml changes
