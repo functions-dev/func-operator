@@ -33,13 +33,24 @@ func buildAuthURL(repoURL, username, password string) string {
 
 // InitializeRepoWithFunction creates a function project and pushes it to the Gitea repo
 func InitializeRepoWithFunction(repoURL, username, password, language string) (repoDir string, err error) {
+	return InitializeRepoWithFunctionVersion(repoURL, username, password, language, "")
+}
+
+// InitializeRepoWithFunctionVersion creates a function project with a specific func CLI version
+// If version is empty, uses the current func CLI
+func InitializeRepoWithFunctionVersion(repoURL, username, password, language, version string) (repoDir string, err error) {
 	repoDir = fmt.Sprintf("%s/func-test-%s", os.TempDir(), rand.String(10))
 
 	// Build authenticated URL
 	authURL := buildAuthURL(repoURL, username, password)
 
 	// Initialize function (func init creates the directory)
-	if _, err = RunFunc("init", "-l", language, repoDir); err != nil {
+	if version == "" {
+		_, err = RunFunc("init", "-l", language, repoDir)
+	} else {
+		_, err = RunFuncWithVersion(version, "init", "-l", language, repoDir)
+	}
+	if err != nil {
 		return "", fmt.Errorf("failed to init function: %w", err)
 	}
 

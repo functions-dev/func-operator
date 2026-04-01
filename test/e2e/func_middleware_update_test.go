@@ -58,17 +58,19 @@ var _ = Describe("Middleware Update", func() {
 			Expect(err).NotTo(HaveOccurred())
 			DeferCleanup(cleanup)
 
-			// Initialize repository with function code
-			repoDir, err = utils.InitializeRepoWithFunction(repoURL, username, password, "go")
-			Expect(err).NotTo(HaveOccurred())
-			DeferCleanup(os.RemoveAll, repoDir)
-
 			functionNamespace, err = utils.GetTestNamespace()
 			Expect(err).NotTo(HaveOccurred())
 			DeferCleanup(cleanupNamespaces, functionNamespace)
 
-			// Deploy function using OLD func CLI version
-			out, err := utils.RunFuncWithVersion("v1.20.0", "deploy",
+			// Initialize repository with function code using OLD func CLI version
+			// v1.20.1 has no middleware-version label and uses instance-compatible templates
+			oldFuncVersion := "v1.20.1"
+			repoDir, err = utils.InitializeRepoWithFunctionVersion(repoURL, username, password, "go", oldFuncVersion)
+			Expect(err).NotTo(HaveOccurred())
+			DeferCleanup(os.RemoveAll, repoDir)
+
+			// Deploy function using the same OLD func CLI version
+			out, err := utils.RunFuncWithVersion(oldFuncVersion, "deploy",
 				"--namespace", functionNamespace,
 				"--path", repoDir,
 				"--registry", registry,
@@ -119,7 +121,7 @@ var _ = Describe("Middleware Update", func() {
 			// We use skopeo with localhost:5001 (port-forward to the registry) to
 			// directly inspect the OCI image labels and verify the middleware was updated.
 
-			// Get initial image digest from func describe (deployed with old v1.20.0)
+			// Get initial image digest from func describe (deployed with v1.20.1)
 			out, err := utils.RunFunc("describe", deployedFunctionName, "-n", functionNamespace, "-o", "yaml")
 			Expect(err).NotTo(HaveOccurred())
 
@@ -129,9 +131,9 @@ var _ = Describe("Middleware Update", func() {
 
 			initialImage := initialInstance.Image
 			Expect(initialImage).NotTo(BeEmpty(), "Initial image should be available from func describe")
-			_, _ = fmt.Fprintf(GinkgoWriter, "Initial image (deployed with v1.20.0): %s\n", initialImage)
+			_, _ = fmt.Fprintf(GinkgoWriter, "Initial image (deployed with v1.20.1): %s\n", initialImage)
 
-			// Verify initial image has no middleware-version label (old func CLI)
+			// Verify initial image has no middleware-version label (v1.20.1 doesn't set it)
 			initialImageLocal := strings.Replace(initialImage, "kind-registry:5000", "localhost:5001", 1)
 			// Remove tag if both tag and digest are present (skopeo doesn't support this format)
 			if strings.Contains(initialImageLocal, "@") {
@@ -160,7 +162,7 @@ var _ = Describe("Middleware Update", func() {
 			Expect(err).NotTo(HaveOccurred())
 
 			initialMiddlewareVersion := initialImageLabels.Labels["middleware-version"]
-			_, _ = fmt.Fprintf(GinkgoWriter, "Initial middleware-version label: '%s' (expected empty for v1.20.0)\n",
+			_, _ = fmt.Fprintf(GinkgoWriter, "Initial middleware-version label: '%s' (expected empty for v1.20.1)\n",
 				initialMiddlewareVersion)
 
 			// Create a Function resource
