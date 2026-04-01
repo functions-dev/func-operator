@@ -113,8 +113,13 @@ var _ = Describe("Middleware Update", func() {
 		})
 
 		It("should update the middleware and mark the function as ready", func() {
+			// Note: We can't reliably check middleware version via func describe in e2e tests
+			// because func describe requires inspecting OCI image labels, which doesn't work
+			// with insecure registries (kind-registry:5000).
+			// Instead, we'll verify the middleware update by checking the CR conditions.
+
 			// Create a Function resource
-			function := &functionsdevv1alpha1.Function{
+			fn := &functionsdevv1alpha1.Function{
 				ObjectMeta: metav1.ObjectMeta{
 					GenerateName: "my-function-",
 					Namespace:    functionNamespace,
@@ -130,17 +135,17 @@ var _ = Describe("Middleware Update", func() {
 				},
 			}
 
-			err := k8sClient.Create(ctx, function)
+			err := k8sClient.Create(ctx, fn)
 			Expect(err).NotTo(HaveOccurred())
 
-			functionName = function.Name
+			functionName = fn.Name
 
 			funcBecomeReady := func(g Gomega) {
-				fn := &functionsdevv1alpha1.Function{}
-				err := k8sClient.Get(ctx, types.NamespacedName{Name: function.Name, Namespace: function.Namespace}, fn)
+				f := &functionsdevv1alpha1.Function{}
+				err := k8sClient.Get(ctx, types.NamespacedName{Name: fn.Name, Namespace: fn.Namespace}, f)
 				g.Expect(err).NotTo(HaveOccurred())
 
-				for _, cond := range fn.Status.Conditions {
+				for _, cond := range f.Status.Conditions {
 					if cond.Type == functionsdevv1alpha1.TypeReady {
 						g.Expect(cond.Status).To(Equal(metav1.ConditionTrue))
 						return
@@ -151,6 +156,27 @@ var _ = Describe("Middleware Update", func() {
 
 			// Middleware update could take a bit longer therefore give more time
 			Eventually(funcBecomeReady, 6*time.Minute).Should(Succeed())
+
+			// Verify middleware was updated by checking the MiddlewareUpToDate condition
+			updatedFunction := &functionsdevv1alpha1.Function{}
+			err = k8sClient.Get(ctx, types.NamespacedName{Name: fn.Name, Namespace: fn.Namespace}, updatedFunction)
+			Expect(err).NotTo(HaveOccurred())
+
+			// Check that MiddlewareUpToDate condition is now True
+			var middlewareUpToDate bool
+			var middlewareCondition metav1.Condition
+			for _, cond := range updatedFunction.Status.Conditions {
+				if cond.Type == functionsdevv1alpha1.TypeMiddlewareUpToDate {
+					middlewareUpToDate = cond.Status == metav1.ConditionTrue
+					middlewareCondition = cond
+					break
+				}
+			}
+			_, _ = fmt.Fprintf(GinkgoWriter, "MiddlewareUpToDate condition: status=%s, reason=%s\n",
+				middlewareCondition.Status, middlewareCondition.Reason)
+
+			Expect(middlewareUpToDate).To(BeTrue(),
+				"MiddlewareUpToDate condition should be True after operator redeploys")
 		})
 	})
 })
