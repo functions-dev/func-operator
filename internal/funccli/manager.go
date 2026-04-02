@@ -43,8 +43,6 @@ type DeployOptions struct {
 	RegistryAuthFile string
 
 	GitUrl string
-
-	Builder string
 }
 
 var _ Manager = &managerImpl{}
@@ -218,7 +216,6 @@ func (m *managerImpl) Deploy(ctx context.Context, repoPath string, namespace str
 		"--namespace", namespace,
 		"--registry", opts.Registry,
 		"--git-url", opts.GitUrl,
-		"--builder", opts.Builder,
 	}
 
 	if opts.RegistryAuthFile != "" {

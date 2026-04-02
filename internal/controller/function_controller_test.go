@@ -118,7 +118,6 @@ var _ = Describe("Function Controller", func() {
 					funcMock.EXPECT().Deploy(mock.Anything, mock.Anything, resourceNamespace, funccli.DeployOptions{
 						Registry: "quay.io/foo/bar",
 						GitUrl:   "https://github.com/foo/bar",
-						Builder:  "s2i",
 					}).Return(nil)
 
 					gitMock.EXPECT().CloneRepository(mock.Anything, "https://github.com/foo/bar", "my-branch", mock.Anything).Return(createTmpGitRepo(functions.Function{Name: "func-go"}), nil)

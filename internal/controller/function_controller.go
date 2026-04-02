@@ -383,7 +383,6 @@ func (r *FunctionReconciler) deploy(ctx context.Context, function *v1alpha1.Func
 		Registry:         function.Spec.Registry.Path,
 		InsecureRegistry: function.Spec.Registry.Insecure,
 		GitUrl:           function.Spec.Source.RepositoryURL,
-		Builder:          "s2i",
 	}
 
 	if function.Spec.Registry.AuthSecretRef != nil && function.Spec.Registry.AuthSecretRef.Name != "" {
