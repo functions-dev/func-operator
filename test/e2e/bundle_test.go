@@ -385,6 +385,10 @@ func createNamespaceAndDeployFunction() TestNamespace {
 	Expect(err).NotTo(HaveOccurred())
 	_, _ = fmt.Fprint(GinkgoWriter, out)
 
+	// Push updated func.yaml back to repo
+	err = utils.CommitAndPush(repoDir, "Update func.yaml after deploy", "func.yaml")
+	Expect(err).NotTo(HaveOccurred())
+
 	return TestNamespace{Name: ns, RepoURL: repoURL}
 }
 
