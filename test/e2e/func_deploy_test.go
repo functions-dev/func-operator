@@ -32,6 +32,98 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 )
 
+// expectFunctionConditionTrue returns a Gomega function that checks if a Function
+// has the specified condition type with status True
+func expectFunctionConditionTrue(functionName, functionNamespace string, conditionType string) func(g Gomega) {
+	return func(g Gomega) {
+		fn := &functionsdevv1alpha1.Function{}
+		err := k8sClient.Get(ctx, types.NamespacedName{Name: functionName, Namespace: functionNamespace}, fn)
+		g.Expect(err).NotTo(HaveOccurred())
+
+		for _, cond := range fn.Status.Conditions {
+			if cond.Type == conditionType {
+				g.Expect(cond.Status).To(Equal(metav1.ConditionTrue))
+				return
+			}
+		}
+		g.Expect(false).To(BeTrue(), conditionType+" condition not found")
+	}
+}
+
+// expectFunctionConditionFalseWithReason returns a Gomega function that checks if a Function
+// has the specified condition type with status False, specific reason, and message substring
+func expectFunctionConditionFalseWithReason(
+	functionName,
+	functionNamespace,
+	conditionType,
+	reason,
+	messageSubstring string) func(g Gomega) {
+	return func(g Gomega) {
+		fn := &functionsdevv1alpha1.Function{}
+		err := k8sClient.Get(ctx, types.NamespacedName{Name: functionName, Namespace: functionNamespace}, fn)
+		g.Expect(err).NotTo(HaveOccurred())
+
+		for _, cond := range fn.Status.Conditions {
+			if cond.Type == conditionType {
+				g.Expect(cond.Status).To(Equal(metav1.ConditionFalse))
+				g.Expect(cond.Reason).To(Equal(reason))
+				g.Expect(cond.Message).To(ContainSubstring(messageSubstring))
+				return
+			}
+		}
+		g.Expect(false).To(BeTrue(), conditionType+" condition not found")
+	}
+}
+
+// functionBecomesReady is a convenience wrapper for checking if a Function becomes Ready
+func functionBecomesReady(functionName, functionNamespace string) func(g Gomega) {
+	return expectFunctionConditionTrue(functionName, functionNamespace, functionsdevv1alpha1.TypeReady)
+}
+
+// functionMiddlewareUpToDate checks if the middleware condition is true
+func functionMiddlewareUpToDate(functionName, functionNamespace string) func(g Gomega) {
+	return expectFunctionConditionTrue(functionName, functionNamespace, functionsdevv1alpha1.TypeMiddlewareUpToDate)
+}
+
+// functionNotReadyWithAuthError returns a Gomega function that checks if a Function
+// is NOT Ready and has an auth error in SourceReady condition
+func functionNotReadyWithAuthError(functionName, functionNamespace string) func(g Gomega) {
+	return func(g Gomega) {
+		fn := &functionsdevv1alpha1.Function{}
+		err := k8sClient.Get(ctx, types.NamespacedName{Name: functionName, Namespace: functionNamespace}, fn)
+		g.Expect(err).NotTo(HaveOccurred())
+
+		for _, cond := range fn.Status.Conditions {
+			if cond.Type == functionsdevv1alpha1.TypeReady {
+				g.Expect(cond.Status).NotTo(Equal(metav1.ConditionTrue))
+			}
+
+			// Check for SourceReady condition with auth error
+			if cond.Type == functionsdevv1alpha1.TypeSourceReady {
+				g.Expect(cond.Status).To(Equal(metav1.ConditionFalse))
+				g.Expect(cond.Message).To(Or(
+					ContainSubstring("authentication"),
+					ContainSubstring("Authentication"),
+					ContainSubstring("401"),
+					ContainSubstring("Unauthorized"),
+				))
+				return
+			}
+		}
+		g.Expect(false).To(BeTrue(), "SourceReady condition not found")
+	}
+}
+
+// functionNotDeployed check if the function is not ready as the function was not deployed yet
+func functionNotDeployed(functionName, functionNamespace string) func(g Gomega) {
+	return expectFunctionConditionFalseWithReason(
+		functionName,
+		functionNamespace,
+		functionsdevv1alpha1.TypeDeployed,
+		"NotDeployed",
+		"Function not deployed yet")
+}
+
 var _ = Describe("Operator", func() {
 
 	SetDefaultEventuallyTimeout(2 * time.Minute)
@@ -110,22 +202,8 @@ var _ = Describe("Operator", func() {
 
 			functionName = function.Name
 
-			funcBecomeReady := func(g Gomega) {
-				fn := &functionsdevv1alpha1.Function{}
-				err := k8sClient.Get(ctx, types.NamespacedName{Name: function.Name, Namespace: function.Namespace}, fn)
-				g.Expect(err).NotTo(HaveOccurred())
-
-				for _, cond := range fn.Status.Conditions {
-					if cond.Type == functionsdevv1alpha1.TypeReady {
-						g.Expect(cond.Status).To(Equal(metav1.ConditionTrue))
-						return
-					}
-				}
-				g.Expect(false).To(BeTrue(), "Ready condition not found")
-			}
-
 			// redeploy could take a bit longer therefore give a bit more time
-			Eventually(funcBecomeReady, 6*time.Minute).Should(Succeed())
+			Eventually(functionBecomesReady(functionName, functionNamespace), 6*time.Minute).Should(Succeed())
 		})
 	})
 	Context("with a function in a subdirectory in a monorepo", func() {
@@ -205,22 +283,8 @@ var _ = Describe("Operator", func() {
 
 			functionName = function.Name
 
-			funcBecomeReady := func(g Gomega) {
-				fn := &functionsdevv1alpha1.Function{}
-				err := k8sClient.Get(ctx, types.NamespacedName{Name: function.Name, Namespace: function.Namespace}, fn)
-				g.Expect(err).NotTo(HaveOccurred())
-
-				for _, cond := range fn.Status.Conditions {
-					if cond.Type == functionsdevv1alpha1.TypeReady {
-						g.Expect(cond.Status).To(Equal(metav1.ConditionTrue))
-						return
-					}
-				}
-				g.Expect(false).To(BeTrue(), "Ready condition not found")
-			}
-
 			// redeploy could take a bit longer therefore give a bit more time
-			Eventually(funcBecomeReady, 6*time.Minute).Should(Succeed())
+			Eventually(functionBecomesReady(functionName, functionNamespace), 6*time.Minute).Should(Succeed())
 		})
 	})
 	Context("with a not yet deployed function", func() {
@@ -278,23 +342,7 @@ var _ = Describe("Operator", func() {
 
 			functionName = function.Name
 
-			funcBecomeReady := func(g Gomega) {
-				fn := &functionsdevv1alpha1.Function{}
-				err := k8sClient.Get(ctx, types.NamespacedName{Name: function.Name, Namespace: function.Namespace}, fn)
-				g.Expect(err).NotTo(HaveOccurred())
-
-				for _, cond := range fn.Status.Conditions {
-					if cond.Type == functionsdevv1alpha1.TypeDeployed {
-						g.Expect(cond.Status).To(Equal(metav1.ConditionFalse))
-						g.Expect(cond.Reason).To(Equal("NotDeployed"))
-						g.Expect(cond.Message).To(ContainSubstring("Function not deployed yet"))
-						return
-					}
-				}
-				g.Expect(false).To(BeTrue(), "Deployed condition not found")
-			}
-
-			Eventually(funcBecomeReady, 2*time.Minute).Should(Succeed())
+			Eventually(functionNotDeployed(functionName, functionNamespace), 2*time.Minute).Should(Succeed())
 		})
 	})
 	Context("with a private repository", func() {
@@ -398,21 +446,7 @@ var _ = Describe("Operator", func() {
 
 				functionName = function.Name
 
-				funcBecomeReady := func(g Gomega) {
-					fn := &functionsdevv1alpha1.Function{}
-					err := k8sClient.Get(ctx, types.NamespacedName{Name: function.Name, Namespace: function.Namespace}, fn)
-					g.Expect(err).NotTo(HaveOccurred())
-
-					for _, cond := range fn.Status.Conditions {
-						if cond.Type == functionsdevv1alpha1.TypeReady {
-							g.Expect(cond.Status).To(Equal(metav1.ConditionTrue))
-							return
-						}
-					}
-					g.Expect(false).To(BeTrue(), "Ready condition not found")
-				}
-
-				Eventually(funcBecomeReady, 6*time.Minute).Should(Succeed())
+				Eventually(functionBecomesReady(functionName, functionNamespace), 6*time.Minute).Should(Succeed())
 			})
 
 			It("should fail with authentication error when authSecretRef is not provided", func() {
@@ -435,32 +469,7 @@ var _ = Describe("Operator", func() {
 
 				functionName = function.Name
 
-				funcFailsWithAuthError := func(g Gomega) {
-					fn := &functionsdevv1alpha1.Function{}
-					err := k8sClient.Get(ctx, types.NamespacedName{Name: function.Name, Namespace: function.Namespace}, fn)
-					g.Expect(err).NotTo(HaveOccurred())
-
-					// Check it's NOT Ready
-					for _, cond := range fn.Status.Conditions {
-						if cond.Type == functionsdevv1alpha1.TypeReady {
-							g.Expect(cond.Status).NotTo(Equal(metav1.ConditionTrue))
-						}
-						// Check for SourceReady condition with auth error
-						if cond.Type == functionsdevv1alpha1.TypeSourceReady {
-							g.Expect(cond.Status).To(Equal(metav1.ConditionFalse))
-							g.Expect(cond.Message).To(Or(
-								ContainSubstring("authentication"),
-								ContainSubstring("Authentication"),
-								ContainSubstring("401"),
-								ContainSubstring("Unauthorized"),
-							))
-							return
-						}
-					}
-					g.Expect(false).To(BeTrue(), "SourceReady condition not found")
-				}
-
-				Eventually(funcFailsWithAuthError, 2*time.Minute).Should(Succeed())
+				Eventually(functionNotReadyWithAuthError(functionName, functionNamespace), 2*time.Minute).Should(Succeed())
 			})
 		})
 
@@ -504,21 +513,7 @@ var _ = Describe("Operator", func() {
 
 				functionName = function.Name
 
-				funcBecomeReady := func(g Gomega) {
-					fn := &functionsdevv1alpha1.Function{}
-					err := k8sClient.Get(ctx, types.NamespacedName{Name: function.Name, Namespace: function.Namespace}, fn)
-					g.Expect(err).NotTo(HaveOccurred())
-
-					for _, cond := range fn.Status.Conditions {
-						if cond.Type == functionsdevv1alpha1.TypeReady {
-							g.Expect(cond.Status).To(Equal(metav1.ConditionTrue))
-							return
-						}
-					}
-					g.Expect(false).To(BeTrue(), "Ready condition not found")
-				}
-
-				Eventually(funcBecomeReady, 6*time.Minute).Should(Succeed())
+				Eventually(functionBecomesReady(functionName, functionNamespace), 6*time.Minute).Should(Succeed())
 			})
 
 			It("should fail with authentication error when authSecretRef is not provided", func() {
@@ -541,32 +536,7 @@ var _ = Describe("Operator", func() {
 
 				functionName = function.Name
 
-				funcFailsWithAuthError := func(g Gomega) {
-					fn := &functionsdevv1alpha1.Function{}
-					err := k8sClient.Get(ctx, types.NamespacedName{Name: function.Name, Namespace: function.Namespace}, fn)
-					g.Expect(err).NotTo(HaveOccurred())
-
-					// Check it's NOT Ready
-					for _, cond := range fn.Status.Conditions {
-						if cond.Type == functionsdevv1alpha1.TypeReady {
-							g.Expect(cond.Status).NotTo(Equal(metav1.ConditionTrue))
-						}
-						// Check for SourceReady condition with auth error
-						if cond.Type == functionsdevv1alpha1.TypeSourceReady {
-							g.Expect(cond.Status).To(Equal(metav1.ConditionFalse))
-							g.Expect(cond.Message).To(Or(
-								ContainSubstring("authentication"),
-								ContainSubstring("Authentication"),
-								ContainSubstring("401"),
-								ContainSubstring("Unauthorized"),
-							))
-							return
-						}
-					}
-					g.Expect(false).To(BeTrue(), "SourceReady condition not found")
-				}
-
-				Eventually(funcFailsWithAuthError, 2*time.Minute).Should(Succeed())
+				Eventually(functionNotReadyWithAuthError(functionName, functionNamespace), 2*time.Minute).Should(Succeed())
 			})
 		})
 	})
