@@ -29,15 +29,15 @@ import (
 
 // StatusTracker manages incremental status updates during reconciliation
 type StatusTracker struct {
-	client   client.Client
-	original *v1alpha1.Function
+	k8sClient client.Client
+	original  *v1alpha1.Function
 }
 
 // NewStatusTracker creates a new status tracker with a snapshot of the current function state
-func NewStatusTracker(client client.Client, function *v1alpha1.Function) *StatusTracker {
+func NewStatusTracker(k8sClient client.Client, function *v1alpha1.Function) *StatusTracker {
 	return &StatusTracker{
-		client:   client,
-		original: function.DeepCopy(),
+		k8sClient: k8sClient,
+		original:  function.DeepCopy(),
 	}
 }
 
@@ -52,7 +52,7 @@ func (t *StatusTracker) Flush(ctx context.Context, current *v1alpha1.Function) e
 		err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
 			// Get the latest version to ensure we have the most recent resourceVersion
 			latest := &v1alpha1.Function{}
-			if err := t.client.Get(ctx, types.NamespacedName{
+			if err := t.k8sClient.Get(ctx, types.NamespacedName{
 				Name:      current.Name,
 				Namespace: current.Namespace,
 			}, latest); err != nil {
@@ -63,7 +63,7 @@ func (t *StatusTracker) Flush(ctx context.Context, current *v1alpha1.Function) e
 			latest.Status = current.Status
 
 			// Attempt the update
-			return t.client.Status().Update(ctx, latest)
+			return t.k8sClient.Status().Update(ctx, latest)
 		})
 
 		if err != nil {
