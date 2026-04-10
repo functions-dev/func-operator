@@ -11,8 +11,13 @@ concurrency:
 
 jobs:
   test-e2e:
-    name: E2E Tests
+    name: E2E Tests (${{ matrix.builder }}/${{ matrix.deployer }})
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        builder: [pack, s2i]
+        deployer: [knative, raw, keda]
     steps:
       - name: Clone the code
         uses: actions/checkout@v4
@@ -50,4 +55,6 @@ jobs:
         env:
           REGISTRY_INSECURE: true
           REGISTRY: kind-registry:5000
+          DEFAULT_BUILDER: ${{ matrix.builder }}
+          DEFAULT_DEPLOYER: ${{ matrix.deployer }}
         run: make test-e2e
