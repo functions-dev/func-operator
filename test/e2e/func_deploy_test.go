@@ -154,7 +154,7 @@ var _ = Describe("Operator", func() {
 			DeferCleanup(cleanupNamespaces, functionNamespace)
 
 			// Deploy function using func CLI
-			out, err := utils.RunFuncDeploy(repoDir, functionNamespace)
+			out, err := utils.RunFuncDeploy(repoDir, utils.WithNamespace(functionNamespace))
 			Expect(err).NotTo(HaveOccurred())
 			_, _ = fmt.Fprint(GinkgoWriter, out)
 
@@ -235,7 +235,7 @@ var _ = Describe("Operator", func() {
 			functionDir := filepath.Join(repoDir, subPath)
 
 			// Deploy function using func CLI
-			out, err := utils.RunFuncDeploy(functionDir, functionNamespace)
+			out, err := utils.RunFuncDeploy(functionDir, utils.WithNamespace(functionNamespace))
 			Expect(err).NotTo(HaveOccurred())
 			_, _ = fmt.Fprint(GinkgoWriter, out)
 
@@ -375,7 +375,7 @@ var _ = Describe("Operator", func() {
 			DeferCleanup(cleanupNamespaces, functionNamespace)
 
 			// Deploy function using func CLI
-			out, err := utils.RunFuncDeploy(repoDir, functionNamespace)
+			out, err := utils.RunFuncDeploy(repoDir, utils.WithNamespace(functionNamespace))
 			Expect(err).NotTo(HaveOccurred())
 			_, _ = fmt.Fprint(GinkgoWriter, out)
 

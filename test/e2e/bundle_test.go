@@ -363,7 +363,7 @@ func createNamespaceAndDeployFunction() TestNamespace {
 	DeferCleanup(os.RemoveAll, repoDir)
 
 	// Deploy function
-	out, err := utils.RunFuncDeploy(repoDir, ns)
+	out, err := utils.RunFuncDeploy(repoDir, utils.WithNamespace(ns))
 	Expect(err).NotTo(HaveOccurred())
 	_, _ = fmt.Fprint(GinkgoWriter, out)
 
