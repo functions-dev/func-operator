@@ -79,8 +79,8 @@ var _ = Describe("Middleware Update", func() {
 			out, err := utils.RunFuncWithVersion(oldFuncVersion, "deploy",
 				"--namespace", functionNamespace,
 				"--path", repoDir,
-				"--registry", registry,
-				fmt.Sprintf("--registry-insecure=%t", registryInsecure))
+				"--registry", utils.Registry(),
+				fmt.Sprintf("--registry-insecure=%t", utils.IsRegistryInsecure()))
 			Expect(err).NotTo(HaveOccurred())
 			_, _ = fmt.Fprint(GinkgoWriter, out)
 
