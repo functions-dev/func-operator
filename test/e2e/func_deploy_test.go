@@ -223,7 +223,12 @@ var _ = Describe("Operator", func() {
 			DeferCleanup(cleanup)
 
 			// Initialize repository with function code
-			repoDir, err = utils.InitializeRepoWithFunctionInSubDir(repoURL, subPath, username, password, "go")
+			repoDir, err = utils.InitializeRepoWithFunction(
+				repoURL,
+				username,
+				password,
+				"go",
+				utils.WithSubDir(subPath))
 			Expect(err).NotTo(HaveOccurred())
 			DeferCleanup(os.RemoveAll, repoDir)
 
