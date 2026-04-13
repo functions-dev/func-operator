@@ -251,12 +251,19 @@ func main() {
 	}
 	setupLog.Info("Func CLI is ready")
 
+	operatorNamespace := os.Getenv("SYSTEM_NAMESPACE")
+	if operatorNamespace == "" {
+		setupLog.Info("Operator namespace not set, defaulting to func-operator-system")
+		operatorNamespace = "func-operator-system"
+	}
+
 	if err := (&controller.FunctionReconciler{
-		Client:         mgr.GetClient(),
-		Scheme:         mgr.GetScheme(),
-		Recorder:       mgr.GetEventRecorder("functions-controller"),
-		FuncCliManager: funcCLIManager,
-		GitManager:     git.NewManager(),
+		Client:            mgr.GetClient(),
+		Scheme:            mgr.GetScheme(),
+		Recorder:          mgr.GetEventRecorder("functions-controller"),
+		FuncCliManager:    funcCLIManager,
+		GitManager:        git.NewManager(),
+		OperatorNamespace: operatorNamespace,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "Function")
 		os.Exit(1)

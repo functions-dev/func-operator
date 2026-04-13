@@ -20,6 +20,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/functions-dev/func-operator/internal/funccli"
@@ -46,15 +47,17 @@ import (
 
 const (
 	deployFunctionRoleName = "func-operator-deploy-function"
+	controllerConfigName   = "controller-config"
 )
 
 // FunctionReconciler reconciles a Function object
 type FunctionReconciler struct {
 	client.Client
-	Scheme         *runtime.Scheme
-	Recorder       events.EventRecorder
-	FuncCliManager funccli.Manager
-	GitManager     git.Manager
+	Scheme            *runtime.Scheme
+	Recorder          events.EventRecorder
+	FuncCliManager    funccli.Manager
+	GitManager        git.Manager
+	OperatorNamespace string
 }
 
 // +kubebuilder:rbac:groups=functions.dev,resources=functions,verbs=get;list;watch;create;update;patch;delete
@@ -214,7 +217,19 @@ func (r *FunctionReconciler) handleMiddlewareUpdate(ctx context.Context, functio
 	}
 
 	if !isOnLatestMiddleware {
-		logger.Info("Function is not on latest middleware. Will redeploy")
+		isMiddlewareUpdateEnabled, source, err := r.isMiddlewareUpdateEnabled(ctx, function)
+		if err != nil {
+			function.MarkMiddlewareNotUpToDate("MiddlewareCheckFailed", "Failed to check if middleware should be updated: %s", err)
+			return fmt.Errorf("failed to check if middleware should be updated: %w", err)
+		}
+
+		if !isMiddlewareUpdateEnabled {
+			logger.Info("Skipping middleware update, as middleware update is disabled")
+			function.MarkMiddlewareNotUpToDateIntentionally("SkipMiddlewareUpdate", "Skipping middleware update as update is disabled (source: %s)", source)
+			return nil
+		}
+
+		logger.Info("Function is not on latest middleware and middleware update is enabled. Will redeploy")
 		function.MarkMiddlewareNotUpToDate("MiddlewareOutdated", "Middleware is outdated, redeploying")
 
 		// update function image in status before long redeploy operation
@@ -490,4 +505,36 @@ func (r *FunctionReconciler) isMiddlewareLatest(ctx context.Context, metadata *f
 	}
 
 	return latestMiddleware == functionMiddleware, nil
+}
+
+// isMiddlewareUpdateEnabled returns if the middleware should be updated given by the functions spec or the operators
+// default.
+func (r *FunctionReconciler) isMiddlewareUpdateEnabled(ctx context.Context, function *v1alpha1.Function) (bool, string, error) {
+	logger := log.FromContext(ctx)
+
+	// setting from function overrides operator default
+	if function.Spec.AutoUpdateMiddleware != nil {
+		return *function.Spec.AutoUpdateMiddleware, "function", nil
+	}
+
+	// nothing defined in function spec --> check operator config
+	cm := &v1.ConfigMap{}
+	err := r.Get(ctx, types.NamespacedName{Namespace: r.OperatorNamespace, Name: controllerConfigName}, cm)
+	if err != nil {
+		return false, "", fmt.Errorf("failed to get operator config configmap: %w", err)
+	}
+
+	val, ok := cm.Data["autoUpdateMiddleware"]
+	if !ok {
+		logger.Info("No autoUpdateMiddleware field in configmap found. Fallback to hardcoded autoUpdateMiddleware=true")
+		// TODO: check if returning an error would be better here
+		return true, "operator", nil
+	}
+
+	boolVal, err := strconv.ParseBool(val)
+	if err != nil {
+		return false, "", fmt.Errorf("failed to parse autoUpdateMiddleware value from configmap: %w", err)
+	}
+
+	return boolVal, "operator", nil
 }
