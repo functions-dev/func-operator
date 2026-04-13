@@ -35,10 +35,13 @@ import (
 	"k8s.io/utils/ptr"
 	funcfn "knative.dev/func/pkg/functions"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
+	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	"github.com/functions-dev/func-operator/api/v1alpha1"
 	rbacv1 "k8s.io/api/rbac/v1"
@@ -47,7 +50,7 @@ import (
 
 const (
 	deployFunctionRoleName = "func-operator-deploy-function"
-	controllerConfigName   = "controller-config"
+	controllerConfigName   = "func-operator-controller-config"
 )
 
 // FunctionReconciler reconciles a Function object
@@ -64,6 +67,7 @@ type FunctionReconciler struct {
 // +kubebuilder:rbac:groups=functions.dev,resources=functions/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=functions.dev,resources=functions/finalizers,verbs=update
 // +kubebuilder:rbac:groups="",resources=pods;pods/attach;secrets;services;persistentvolumeclaims,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups="",resources=configmaps,verbs=get;list;watch
 // +kubebuilder:rbac:groups="apps",resources=deployments;replicasets,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups="serving.knative.dev",resources=services;routes,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups="eventing.knative.dev",resources=triggers,verbs=get;list;watch;create;update;patch;delete
@@ -226,39 +230,43 @@ func (r *FunctionReconciler) handleMiddlewareUpdate(ctx context.Context, functio
 		if !isMiddlewareUpdateEnabled {
 			logger.Info("Skipping middleware update, as middleware update is disabled")
 			function.MarkMiddlewareNotUpToDateIntentionally("SkipMiddlewareUpdate", "Skipping middleware update as update is disabled (source: %s)", source)
-			return nil
-		}
+			// Don't return - continue to update deployment status
+		} else {
+			logger.Info("Function is not on latest middleware and middleware update is enabled. Will redeploy")
+			function.MarkMiddlewareNotUpToDate("MiddlewareOutdated", "Middleware is outdated, redeploying")
 
-		logger.Info("Function is not on latest middleware and middleware update is enabled. Will redeploy")
-		function.MarkMiddlewareNotUpToDate("MiddlewareOutdated", "Middleware is outdated, redeploying")
+			// update function image in status before long redeploy operation
+			functionDescribe, err := r.FuncCliManager.Describe(ctx, metadata.Name, function.Namespace)
+			if err != nil {
+				return fmt.Errorf("failed to describe function to get image details: %w", err)
+			}
+			function.Status.Deployment.Image = functionDescribe.Image
 
-		// update function image in status before long redeploy operation
-		functionDescribe, err := r.FuncCliManager.Describe(ctx, metadata.Name, function.Namespace)
-		if err != nil {
-			return fmt.Errorf("failed to describe function to get image details: %w", err)
-		}
-		function.Status.Deployment.Image = functionDescribe.Image
+			// Flush status before long deploy operation
+			if err := FlushStatus(ctx, function); err != nil {
+				logger.Error(err, "Failed to update status before redeployment")
+			}
 
-		// Flush status before long deploy operation
-		if err := FlushStatus(ctx, function); err != nil {
-			logger.Error(err, "Failed to update status before redeployment")
-		}
+			if err := r.deploy(ctx, function, repo); err != nil {
+				function.MarkDeployNotReady("DeployFailed", "Redeployment failed: %s", err.Error())
+				return fmt.Errorf("failed to redeploy function: %w", err)
+			}
 
-		if err := r.deploy(ctx, function, repo); err != nil {
-			function.MarkDeployNotReady("DeployFailed", "Redeployment failed: %s", err.Error())
-			return fmt.Errorf("failed to redeploy function: %w", err)
+			// After successful deployment, middleware is now up-to-date
+			function.MarkMiddlewareUpToDate()
 		}
 	} else {
 		logger.Info("Function is deployed with latest middleware. No need to redeploy")
+		function.MarkMiddlewareUpToDate()
 	}
 
+	// Update deployment status
 	functionDescribe, err := r.FuncCliManager.Describe(ctx, metadata.Name, function.Namespace)
 	if err != nil {
 		return fmt.Errorf("failed to describe function to get image details: %w", err)
 	}
 	function.Status.Deployment.Image = functionDescribe.Image
 
-	function.MarkMiddlewareUpToDate()
 	function.MarkDeployReady()
 	return nil
 }
@@ -484,13 +492,60 @@ func (r *FunctionReconciler) isDeployed(ctx context.Context, name, namespace str
 // SetupWithManager sets up the controller with the Manager.
 func (r *FunctionReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&v1alpha1.Function{}).
-		WithEventFilter(predicate.GenerationChangedPredicate{}). // only reconcile when the spec changed (e.g. not on status updates)
+		// Only reconcile Functions when their spec changes (not on status updates).
+		// This predicate is applied to For() instead of WithEventFilter() to ensure
+		// it doesn't filter out ConfigMap-triggered reconciliations.
+		For(&v1alpha1.Function{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
+		Watches(
+			&v1.ConfigMap{},
+			handler.EnqueueRequestsFromMapFunc(r.findFunctionsForConfigMap),
+			builder.WithPredicates(predicate.NewPredicateFuncs(func(obj client.Object) bool {
+				// Only watch the controller-config ConfigMap in the operator namespace
+				return obj.GetName() == controllerConfigName && obj.GetNamespace() == r.OperatorNamespace
+			})),
+		).
 		Named("function").
 		WithOptions(controller.Options{
 			MaxConcurrentReconciles: 100, // TODO: find a good value
 		}).
 		Complete(r)
+}
+
+// findFunctionsForConfigMap returns reconcile requests for all Functions that should be
+// reconciled when the controller-config ConfigMap changes. This triggers reconciliation
+// for Functions that rely on the operator-wide default (i.e., those without an explicit
+// autoUpdateMiddleware setting).
+//
+// Note: This function is safe for multi-controller setups. The List() call uses the manager's
+// cached client, which is already scoped to the namespaces this controller is watching
+// (via WATCH_NAMESPACE env var). Each controller instance only reconciles Functions in its
+// own watched namespaces.
+func (r *FunctionReconciler) findFunctionsForConfigMap(ctx context.Context, _ client.Object) []reconcile.Request {
+	logger := log.FromContext(ctx)
+
+	// List all Functions in the watched namespaces (scoped by the manager's cache)
+	functionList := &v1alpha1.FunctionList{}
+	if err := r.List(ctx, functionList); err != nil {
+		logger.Error(err, "Failed to list Functions for ConfigMap watch")
+		return []reconcile.Request{}
+	}
+
+	requests := make([]reconcile.Request, 0, len(functionList.Items))
+	for _, function := range functionList.Items {
+		// Only enqueue Functions that rely on the operator default
+		// (i.e., those without an explicit autoUpdateMiddleware setting)
+		if function.Spec.AutoUpdateMiddleware == nil {
+			requests = append(requests, reconcile.Request{
+				NamespacedName: types.NamespacedName{
+					Name:      function.Name,
+					Namespace: function.Namespace,
+				},
+			})
+		}
+	}
+
+	logger.Info("Enqueueing Functions for reconciliation due to ConfigMap change", "count", len(requests))
+	return requests
 }
 
 func (r *FunctionReconciler) isMiddlewareLatest(ctx context.Context, metadata *funcfn.Function, namespace string) (bool, error) {
