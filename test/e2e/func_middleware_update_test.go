@@ -49,8 +49,6 @@ var _ = Describe("Middleware Update", func() {
 		var functionName, functionNamespace string
 
 		BeforeEach(func() {
-			Skip("Skip for now, as the old used CLI for this test (1.20.1), does not have " +
-				"https://github.com/knative/func/pull/3490 yet")
 			var err error
 
 			// Create repository provider resources with automatic cleanup
@@ -67,8 +65,8 @@ var _ = Describe("Middleware Update", func() {
 			DeferCleanup(cleanupNamespaces, functionNamespace)
 
 			// Initialize repository with function code using OLD func CLI version
-			// v1.20.1 has no middleware-version label and uses instance-compatible templates
-			oldFuncVersion := "v1.20.1"
+			// v1.20.2 has no middleware-version label and uses instance-compatible templates
+			oldFuncVersion := "v1.20.2"
 			repoDir, err = utils.InitializeRepoWithFunction(
 				repoURL,
 				username,
@@ -128,7 +126,7 @@ var _ = Describe("Middleware Update", func() {
 			// We use skopeo with localhost:5001 (port-forward to the registry) to
 			// directly inspect the OCI image labels and verify the middleware was updated.
 
-			// Get initial image digest from func describe (deployed with v1.20.1)
+			// Get initial image digest from func describe (deployed with v1.20.2)
 			out, err := utils.RunFunc("describe", deployedFunctionName, "-n", functionNamespace, "-o", "yaml")
 			Expect(err).NotTo(HaveOccurred())
 
@@ -138,9 +136,9 @@ var _ = Describe("Middleware Update", func() {
 
 			initialImage := initialInstance.Image
 			Expect(initialImage).NotTo(BeEmpty(), "Initial image should be available from func describe")
-			_, _ = fmt.Fprintf(GinkgoWriter, "Initial image (deployed with v1.20.1): %s\n", initialImage)
+			_, _ = fmt.Fprintf(GinkgoWriter, "Initial image (deployed with v1.20.2): %s\n", initialImage)
 
-			// Verify initial image has no middleware-version label (v1.20.1 doesn't set it)
+			// Verify initial image has no middleware-version label (v1.20.2 doesn't set it)
 			initialImageLocal := strings.Replace(initialImage, "kind-registry:5000", "localhost:5001", 1)
 			// Remove tag if both tag and digest are present (skopeo doesn't support this format)
 			if strings.Contains(initialImageLocal, "@") {
@@ -169,7 +167,7 @@ var _ = Describe("Middleware Update", func() {
 			Expect(err).NotTo(HaveOccurred())
 
 			initialMiddlewareVersion := initialImageLabels.Labels["middleware-version"]
-			_, _ = fmt.Fprintf(GinkgoWriter, "Initial middleware-version label: '%s' (expected empty for v1.20.1)\n",
+			_, _ = fmt.Fprintf(GinkgoWriter, "Initial middleware-version label: '%s' (expected empty for v1.20.2)\n",
 				initialMiddlewareVersion)
 
 			// Create a Function resource
@@ -257,9 +255,6 @@ var _ = Describe("Middleware Update", func() {
 		var originalConfigMapData map[string]string
 
 		BeforeEach(func() {
-			Skip("Skip for now, as the old used CLI for this test (1.20.1), does not have " +
-				"https://github.com/knative/func/pull/3490 yet")
-
 			var err error
 
 			// Save original ConfigMap data to restore later
@@ -304,7 +299,7 @@ var _ = Describe("Middleware Update", func() {
 
 			// Initialize repository with function code using OLD func CLI version
 			// to ensure middleware will be outdated
-			oldFuncVersion := "v1.20.1"
+			oldFuncVersion := "v1.20.2"
 			repoDir, err = utils.InitializeRepoWithFunction(
 				repoURL,
 				username,
