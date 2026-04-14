@@ -4,7 +4,7 @@ go 1.25.7
 
 require (
 	code.gitea.io/sdk/gitea v0.23.2
-	github.com/go-git/go-git/v6 v6.0.0-20260317113930-fb0d09929504
+	github.com/go-git/go-git/v6 v6.0.0-alpha.1
 	github.com/go-logr/logr v1.4.3
 	github.com/onsi/ginkgo/v2 v2.28.1
 	github.com/onsi/gomega v1.39.1
@@ -26,7 +26,7 @@ require (
 	github.com/BurntSushi/toml v1.6.0 // indirect
 	github.com/Masterminds/semver/v3 v3.4.0 // indirect
 	github.com/Microsoft/go-winio v0.6.2 // indirect
-	github.com/ProtonMail/go-crypto v1.4.0 // indirect
+	github.com/ProtonMail/go-crypto v1.4.1 // indirect
 	github.com/antlr4-go/antlr/v4 v4.13.1 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/blang/semver/v4 v4.0.0 // indirect
