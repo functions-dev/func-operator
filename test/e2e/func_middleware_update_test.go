@@ -451,7 +451,7 @@ var _ = Describe("Middleware Update", func() {
 				for _, cond := range fn.Status.Conditions {
 					if cond.Type == functionsdevv1alpha1.TypeMiddlewareUpToDate {
 						g.Expect(cond.Status).To(Equal(metav1.ConditionTrue))
-						g.Expect(cond.Reason).To(Equal("MiddlewareUpToDate"))
+						g.Expect(cond.Reason).To(Equal("UpToDate"))
 						return
 					}
 				}
