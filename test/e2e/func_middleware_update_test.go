@@ -49,6 +49,11 @@ var _ = Describe("Middleware Update", func() {
 		var functionName, functionNamespace string
 
 		BeforeEach(func() {
+			if os.Getenv("DEFAULT_DEPLOYER") == "keda" || os.Getenv("DEFAULT_DEPLOYER") == "raw" {
+				Skip("Skipping middleware test for Keda & raw deployer, " +
+					"as those are not supported on used CLI version (1.20.x) of this tests")
+			}
+
 			var err error
 
 			// Create repository provider resources with automatic cleanup
@@ -255,6 +260,11 @@ var _ = Describe("Middleware Update", func() {
 		var originalConfigMapData map[string]string
 
 		BeforeEach(func() {
+			if os.Getenv("DEFAULT_DEPLOYER") == "keda" || os.Getenv("DEFAULT_DEPLOYER") == "raw" {
+				Skip("Skipping middleware test for Keda & raw deployer, " +
+					"as those are not supported on used CLI version (1.20.x) of this tests")
+			}
+
 			var err error
 
 			// Save original ConfigMap data to restore later
