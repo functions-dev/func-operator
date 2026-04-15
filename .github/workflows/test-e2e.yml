@@ -66,7 +66,9 @@ jobs:
         run: |
           mkdir -p /tmp/k8s-artifacts
           kubectl logs -n func-operator-system -l control-plane=controller-manager --tail=-1 --all-containers --prefix --timestamps > /tmp/k8s-artifacts/func-operator.log
-          kubectl get functions -A -o yaml > /tmp/functions.yaml
+          for resource in functions deployments configmaps; do
+            kubectl get ${resource} -A -o yaml > /tmp/k8s-artifacts/${resource}.yaml
+          done
 
       - name: Upload Kubernetes artifacts
         if: failure()
