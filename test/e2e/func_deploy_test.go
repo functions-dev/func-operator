@@ -138,20 +138,20 @@ var _ = Describe("Operator", func() {
 			// Create repository provider resources with automatic cleanup
 			username, password, _, cleanup, err := repoProvider.CreateRandomUser()
 			Expect(err).NotTo(HaveOccurred())
-			DeferCleanup(cleanup)
+			utils.DeferCleanupOnSuccess(cleanup)
 
 			_, repoURL, cleanup, err = repoProvider.CreateRandomRepo(username, false)
 			Expect(err).NotTo(HaveOccurred())
-			DeferCleanup(cleanup)
+			utils.DeferCleanupOnSuccess(cleanup)
 
 			// Initialize repository with function code
 			repoDir, err = utils.InitializeRepoWithFunction(repoURL, username, password, "go")
 			Expect(err).NotTo(HaveOccurred())
-			DeferCleanup(os.RemoveAll, repoDir)
+			utils.DeferCleanupOnSuccess(os.RemoveAll, repoDir)
 
 			functionNamespace, err = utils.GetTestNamespace()
 			Expect(err).NotTo(HaveOccurred())
-			DeferCleanup(cleanupNamespaces, functionNamespace)
+			utils.DeferCleanupOnSuccess(cleanupNamespaces, functionNamespace)
 
 			// Deploy function using func CLI
 			out, err := utils.RunFuncDeploy(repoDir, utils.WithNamespace(functionNamespace))
@@ -159,7 +159,7 @@ var _ = Describe("Operator", func() {
 			_, _ = fmt.Fprint(GinkgoWriter, out)
 
 			// Cleanup func deployment
-			DeferCleanup(func() {
+			utils.DeferCleanupOnSuccess(func() {
 				_, _ = utils.RunFunc("delete", "--path", repoDir, "--namespace", functionNamespace)
 			})
 
@@ -212,11 +212,11 @@ var _ = Describe("Operator", func() {
 			// Create repository provider resources with automatic cleanup
 			username, password, _, cleanup, err := repoProvider.CreateRandomUser()
 			Expect(err).NotTo(HaveOccurred())
-			DeferCleanup(cleanup)
+			utils.DeferCleanupOnSuccess(cleanup)
 
 			_, repoURL, cleanup, err = repoProvider.CreateRandomRepo(username, false)
 			Expect(err).NotTo(HaveOccurred())
-			DeferCleanup(cleanup)
+			utils.DeferCleanupOnSuccess(cleanup)
 
 			// Initialize repository with function code
 			repoDir, err = utils.InitializeRepoWithFunction(
@@ -226,11 +226,11 @@ var _ = Describe("Operator", func() {
 				"go",
 				utils.WithSubDir(subPath))
 			Expect(err).NotTo(HaveOccurred())
-			DeferCleanup(os.RemoveAll, repoDir)
+			utils.DeferCleanupOnSuccess(os.RemoveAll, repoDir)
 
 			functionNamespace, err = utils.GetTestNamespace()
 			Expect(err).NotTo(HaveOccurred())
-			DeferCleanup(cleanupNamespaces, functionNamespace)
+			utils.DeferCleanupOnSuccess(cleanupNamespaces, functionNamespace)
 
 			functionDir := filepath.Join(repoDir, subPath)
 
@@ -240,7 +240,7 @@ var _ = Describe("Operator", func() {
 			_, _ = fmt.Fprint(GinkgoWriter, out)
 
 			// Cleanup func deployment
-			DeferCleanup(func() {
+			utils.DeferCleanupOnSuccess(func() {
 				_, _ = utils.RunFunc("delete", "--path", functionDir, "--namespace", functionNamespace)
 			})
 
@@ -295,20 +295,20 @@ var _ = Describe("Operator", func() {
 			// Create repository with function code but don't deploy
 			username, password, _, cleanup, err := repoProvider.CreateRandomUser()
 			Expect(err).NotTo(HaveOccurred())
-			DeferCleanup(cleanup)
+			utils.DeferCleanupOnSuccess(cleanup)
 
 			_, repoURL, cleanup, err = repoProvider.CreateRandomRepo(username, false)
 			Expect(err).NotTo(HaveOccurred())
-			DeferCleanup(cleanup)
+			utils.DeferCleanupOnSuccess(cleanup)
 
 			// Initialize repository with function code
 			repoDir, err = utils.InitializeRepoWithFunction(repoURL, username, password, "go")
 			Expect(err).NotTo(HaveOccurred())
-			DeferCleanup(os.RemoveAll, repoDir)
+			utils.DeferCleanupOnSuccess(os.RemoveAll, repoDir)
 
 			functionNamespace, err = utils.GetTestNamespace()
 			Expect(err).NotTo(HaveOccurred())
-			DeferCleanup(cleanupNamespaces, functionNamespace)
+			utils.DeferCleanupOnSuccess(cleanupNamespaces, functionNamespace)
 		})
 
 		AfterEach(func() {
@@ -355,11 +355,11 @@ var _ = Describe("Operator", func() {
 
 			username, password, _, cleanup, err = repoProvider.CreateRandomUser()
 			Expect(err).NotTo(HaveOccurred())
-			DeferCleanup(cleanup)
+			utils.DeferCleanupOnSuccess(cleanup)
 
 			_, repoURL, cleanup, err = repoProvider.CreateRandomRepo(username, true) // private repo
 			Expect(err).NotTo(HaveOccurred())
-			DeferCleanup(cleanup)
+			utils.DeferCleanupOnSuccess(cleanup)
 
 			// Create access token for the user
 			token, err = repoProvider.CreateAccessToken(username, password, "e2e-token")
@@ -368,11 +368,11 @@ var _ = Describe("Operator", func() {
 			// Initialize repository with function code
 			repoDir, err = utils.InitializeRepoWithFunction(repoURL, username, password, "go")
 			Expect(err).NotTo(HaveOccurred())
-			DeferCleanup(os.RemoveAll, repoDir)
+			utils.DeferCleanupOnSuccess(os.RemoveAll, repoDir)
 
 			functionNamespace, err = utils.GetTestNamespace()
 			Expect(err).NotTo(HaveOccurred())
-			DeferCleanup(cleanupNamespaces, functionNamespace)
+			utils.DeferCleanupOnSuccess(cleanupNamespaces, functionNamespace)
 
 			// Deploy function using func CLI
 			out, err := utils.RunFuncDeploy(repoDir, utils.WithNamespace(functionNamespace))
@@ -380,7 +380,7 @@ var _ = Describe("Operator", func() {
 			_, _ = fmt.Fprint(GinkgoWriter, out)
 
 			// Cleanup func deployment
-			DeferCleanup(func() {
+			utils.DeferCleanupOnSuccess(func() {
 				_, _ = utils.RunFunc("delete", "--path", repoDir, "--namespace", functionNamespace)
 			})
 
@@ -414,7 +414,7 @@ var _ = Describe("Operator", func() {
 				}
 				err := k8sClient.Create(ctx, secret)
 				Expect(err).NotTo(HaveOccurred())
-				DeferCleanup(func() {
+				utils.DeferCleanupOnSuccess(func() {
 					_ = k8sClient.Delete(ctx, secret)
 				})
 
@@ -481,7 +481,7 @@ var _ = Describe("Operator", func() {
 				}
 				err := k8sClient.Create(ctx, secret)
 				Expect(err).NotTo(HaveOccurred())
-				DeferCleanup(func() {
+				utils.DeferCleanupOnSuccess(func() {
 					_ = k8sClient.Delete(ctx, secret)
 				})
 
