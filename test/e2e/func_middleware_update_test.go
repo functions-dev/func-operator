@@ -248,7 +248,8 @@ var _ = Describe("Middleware Update", func() {
 		})
 	})
 
-	Context("when ConfigMap autoUpdateMiddleware setting changes", func() {
+	// this context should not run in parallel (--> Serial), as this would interfere other tests
+	Context("when ConfigMap autoUpdateMiddleware setting changes", Serial /*don't run in parallel*/, func() {
 		const (
 			operatorNamespace    = "func-operator-system"
 			controllerConfigName = "func-operator-controller-config"
