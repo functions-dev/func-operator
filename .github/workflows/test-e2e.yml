@@ -74,8 +74,21 @@ jobs:
         run: |
           mkdir -p /tmp/k8s-artifacts
           kubectl logs -n func-operator-system -l control-plane=controller-manager --tail=-1 --all-containers --prefix --timestamps > /tmp/k8s-artifacts/func-operator.log || true
-          for resource in functions deployments configmaps; do
+          for resource in functions deployments configmaps pipelineruns; do
             kubectl get ${resource} -A -o yaml > /tmp/k8s-artifacts/${resource}.yaml || true
+          done
+
+          # Install Tekton CLI for better PipelineRun log collection
+          curl -LO https://github.com/tektoncd/cli/releases/download/v0.44.1/tkn_0.44.1_Linux_x86_64.tar.gz
+          tar xvzf tkn_0.44.1_Linux_x86_64.tar.gz -C /tmp
+          chmod +x /tmp/tkn
+
+          # Collect logs from all pipelineruns using Tekton CLI
+          /tmp/tkn pipelinerun list -A > /tmp/k8s-artifacts/pipelinerun-list.txt 2>&1 || true
+          for pr in $(kubectl get pipelineruns -A -o jsonpath='{range .items[*]}{.metadata.namespace}{" "}{.metadata.name}{"\n"}{end}'); do
+            ns=$(echo $pr | awk '{print $1}')
+            name=$(echo $pr | awk '{print $2}')
+            /tmp/tkn pipelinerun logs $name -n $ns > /tmp/k8s-artifacts/pipelinerun-logs-${ns}-${name}.log 2>&1 || true
           done
 
       - name: Upload Kubernetes artifacts
