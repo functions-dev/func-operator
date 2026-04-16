@@ -124,12 +124,6 @@ var _ = Describe("Manager", func() {
 		Context("with curl-metrics-pod", func() {
 			curlMetricPodName := "curl-metrics"
 
-			AfterEach(func() {
-				cmd := exec.Command("kubectl", "delete", "pod", curlMetricPodName, "-n", namespace, "--ignore-not-found")
-				_, err := utils.Run(cmd)
-				Expect(err).NotTo(HaveOccurred())
-			})
-
 			It("should ensure the metrics endpoint is serving metrics", func() {
 				By("validating that the metrics service is available")
 				cmd := exec.Command("kubectl", "get", "service", metricsServiceName, "-n", namespace)
@@ -185,6 +179,14 @@ var _ = Describe("Manager", func() {
 				_, err = utils.Run(cmd)
 				Expect(err).NotTo(HaveOccurred(), "Failed to create curl-metrics pod")
 
+				// Ensure pod cleanup happens after test completes and debug logs are collected
+				// Using DeferCleanup ensures cleanup runs after AfterEach hooks (which collect debug logs on failure)
+				DeferCleanup(func() {
+					cmd := exec.Command("kubectl", "delete", "pod", curlMetricPodName, "-n", namespace, "--ignore-not-found")
+					_, err := utils.Run(cmd)
+					Expect(err).NotTo(HaveOccurred())
+				})
+
 				By("waiting for the curl-metrics pod to complete.")
 				verifyCurlUp := func(g Gomega) {
 					cmd := exec.Command("kubectl", "get", "pods", curlMetricPodName,
@@ -195,6 +197,16 @@ var _ = Describe("Manager", func() {
 					g.Expect(output).To(Equal("Succeeded"), "curl pod in wrong status")
 				}
 				Eventually(verifyCurlUp, 5*time.Minute).Should(Succeed())
+
+				By("waiting for curl-metrics logs to be available")
+				// Add a small delay to ensure logs are flushed after pod completion
+				verifyLogsAvailable := func(g Gomega) {
+					cmd := exec.Command("kubectl", "logs", curlMetricPodName, "-n", namespace)
+					output, err := utils.Run(cmd)
+					g.Expect(err).NotTo(HaveOccurred())
+					g.Expect(output).NotTo(BeEmpty(), "Logs should not be empty")
+				}
+				Eventually(verifyLogsAvailable, 30*time.Second).Should(Succeed())
 
 				By("getting the metrics by checking curl-metrics logs")
 				metricsOutput := getMetricsOutput()
