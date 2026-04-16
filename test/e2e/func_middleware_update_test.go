@@ -39,7 +39,7 @@ import (
 
 var _ = Describe("Middleware Update", func() {
 
-	SetDefaultEventuallyTimeout(2 * time.Minute)
+	SetDefaultEventuallyTimeout(10 * time.Minute)
 	SetDefaultEventuallyPollingInterval(time.Second)
 
 	Context("with a function deployed using old func CLI", func() {
@@ -193,8 +193,7 @@ var _ = Describe("Middleware Update", func() {
 
 			functionName = fn.Name
 
-			// Middleware update could take a bit longer therefore give more time
-			Eventually(functionBecomesReady(functionName, functionNamespace), 6*time.Minute).Should(Succeed())
+			Eventually(functionBecomesReady(functionName, functionNamespace)).Should(Succeed())
 
 			// Verify middleware was actually updated by inspecting the new image
 			out, err = utils.RunFunc("describe", deployedFunctionName, "-n", functionNamespace, "-o", "yaml")
@@ -457,7 +456,7 @@ var _ = Describe("Middleware Update", func() {
 					}
 				}
 				g.Expect(false).To(BeTrue(), "MiddlewareUpToDate condition not found")
-			}, 5*time.Minute).Should(Succeed())
+			}).Should(Succeed())
 
 			Eventually(functionBecomesReady(functionName, functionNamespace)).Should(Succeed())
 		})

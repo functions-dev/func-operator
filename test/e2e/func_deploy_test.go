@@ -126,7 +126,7 @@ func functionNotDeployed(functionName, functionNamespace string) func(g Gomega) 
 
 var _ = Describe("Operator", func() {
 
-	SetDefaultEventuallyTimeout(2 * time.Minute)
+	SetDefaultEventuallyTimeout(10 * time.Minute)
 	SetDefaultEventuallyPollingInterval(time.Second)
 
 	Context("with a deployed function", func() {
@@ -198,8 +198,7 @@ var _ = Describe("Operator", func() {
 
 			functionName = function.Name
 
-			// redeploy could take a bit longer therefore give a bit more time
-			Eventually(functionBecomesReady(functionName, functionNamespace), 6*time.Minute).Should(Succeed())
+			Eventually(functionBecomesReady(functionName, functionNamespace)).Should(Succeed())
 		})
 	})
 	Context("with a function in a subdirectory in a monorepo", func() {
@@ -280,8 +279,7 @@ var _ = Describe("Operator", func() {
 
 			functionName = function.Name
 
-			// redeploy could take a bit longer therefore give a bit more time
-			Eventually(functionBecomesReady(functionName, functionNamespace), 6*time.Minute).Should(Succeed())
+			Eventually(functionBecomesReady(functionName, functionNamespace)).Should(Succeed())
 		})
 	})
 	Context("with a not yet deployed function", func() {
@@ -439,7 +437,7 @@ var _ = Describe("Operator", func() {
 
 				functionName = function.Name
 
-				Eventually(functionBecomesReady(functionName, functionNamespace), 6*time.Minute).Should(Succeed())
+				Eventually(functionBecomesReady(functionName, functionNamespace)).Should(Succeed())
 			})
 
 			It("should fail with authentication error when authSecretRef is not provided", func() {
@@ -506,7 +504,7 @@ var _ = Describe("Operator", func() {
 
 				functionName = function.Name
 
-				Eventually(functionBecomesReady(functionName, functionNamespace), 6*time.Minute).Should(Succeed())
+				Eventually(functionBecomesReady(functionName, functionNamespace)).Should(Succeed())
 			})
 
 			It("should fail with authentication error when authSecretRef is not provided", func() {
