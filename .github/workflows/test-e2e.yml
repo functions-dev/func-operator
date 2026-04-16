@@ -85,9 +85,7 @@ jobs:
 
           # Collect logs from all pipelineruns using Tekton CLI
           /tmp/tkn pipelinerun list -A > /tmp/k8s-artifacts/pipelinerun-list.txt 2>&1 || true
-          for pr in $(kubectl get pipelineruns -A -o jsonpath='{range .items[*]}{.metadata.namespace}{" "}{.metadata.name}{"\n"}{end}'); do
-            ns=$(echo $pr | awk '{print $1}')
-            name=$(echo $pr | awk '{print $2}')
+          kubectl get pipelineruns -A -o json | jq -r '.items[] | "\(.metadata.namespace) \(.metadata.name)"' | while read ns name; do
             /tmp/tkn pipelinerun logs $name -n $ns > /tmp/k8s-artifacts/pipelinerun-logs-${ns}-${name}.log 2>&1 || true
           done
 
