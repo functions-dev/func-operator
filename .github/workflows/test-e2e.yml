@@ -74,7 +74,7 @@ jobs:
         run: |
           mkdir -p /tmp/k8s-artifacts
           kubectl logs -n func-operator-system -l control-plane=controller-manager --tail=-1 --all-containers --prefix --timestamps > /tmp/k8s-artifacts/func-operator.log || true
-          for resource in functions deployments configmaps pipelineruns; do
+          for resource in functions deployments configmaps pipelineruns roles rolebindings; do
             kubectl get ${resource} -A -o yaml > /tmp/k8s-artifacts/${resource}.yaml || true
           done
 
