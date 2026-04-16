@@ -126,9 +126,6 @@ func functionNotDeployed(functionName, functionNamespace string) func(g Gomega) 
 
 var _ = Describe("Operator", func() {
 
-	SetDefaultEventuallyTimeout(10 * time.Minute)
-	SetDefaultEventuallyPollingInterval(time.Second)
-
 	Context("with a deployed function", func() {
 		var repoURL string
 		var repoDir string

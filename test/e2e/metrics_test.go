@@ -79,9 +79,6 @@ var _ = Describe("Manager", func() {
 		}
 	})
 
-	SetDefaultEventuallyTimeout(2 * time.Minute)
-	SetDefaultEventuallyPollingInterval(time.Second)
-
 	Context("Manager", func() {
 		// BeforeEach ensures controllerPodName is set before each test runs
 		BeforeEach(func() {

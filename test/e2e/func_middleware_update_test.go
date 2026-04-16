@@ -39,9 +39,6 @@ import (
 
 var _ = Describe("Middleware Update", func() {
 
-	SetDefaultEventuallyTimeout(10 * time.Minute)
-	SetDefaultEventuallyPollingInterval(time.Second)
-
 	Context("with a function deployed using old func CLI", func() {
 
 		var repoURL string
