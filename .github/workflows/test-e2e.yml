@@ -71,17 +71,21 @@ jobs:
           if [ "${{ matrix.builder }}" = "s2i" ]; then
             echo "Pre-pulling S2I builder images..."
             docker pull registry.access.redhat.com/ubi8/go-toolset:latest
-            docker pull registry.access.redhat.com/ubi8/python-39:latest
-            docker pull registry.access.redhat.com/ubi8/nodejs-20:latest
+          #  docker pull registry.access.redhat.com/ubi8/python-39:latest
+          #  docker pull registry.access.redhat.com/ubi8/nodejs-20-minimal:latest
+          #  docker pull registry.access.redhat.com/ubi8/openjdk-21:latest
 
             kind load docker-image registry.access.redhat.com/ubi8/go-toolset:latest
-            kind load docker-image registry.access.redhat.com/ubi8/python-39:latest
-            kind load docker-image registry.access.redhat.com/ubi8/nodejs-20:latest
+          #  kind load docker-image registry.access.redhat.com/ubi8/python-39:latest
+          #  kind load docker-image registry.access.redhat.com/ubi8/nodejs-20-minimal:latest
+          #  kind load docker-image registry.access.redhat.com/ubi8/openjdk-21:latest
           elif [ "${{ matrix.builder }}" = "pack" ]; then
             echo "Pre-pulling pack builder images..."
-            docker pull ghcr.io/knative/builder-jammy-base:latest
+            docker pull ghcr.io/knative/builder-jammy-base:v2
+            docker pull ghcr.io/knative/builder-jammy-tiny:v2
 
-            kind load docker-image ghcr.io/knative/builder-jammy-base:latest
+            kind load docker-image ghcr.io/knative/builder-jammy-base:v2
+            kind load docker-image ghcr.io/knative/builder-jammy-tiny:v2
           fi
 
           echo "Builder images cached in KinD cluster"
