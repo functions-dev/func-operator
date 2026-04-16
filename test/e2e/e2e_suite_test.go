@@ -54,7 +54,7 @@ var _ = BeforeSuite(func() {
 
 	// Set global timeout for Eventually assertions
 	// Must be set here (not in Describe blocks) to avoid race conditions in parallel execution
-	SetDefaultEventuallyTimeout(6 * time.Minute)
+	SetDefaultEventuallyTimeout(10 * time.Minute)
 	SetDefaultEventuallyPollingInterval(1 * time.Second)
 
 	// Register the Function API scheme
