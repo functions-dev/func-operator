@@ -83,7 +83,8 @@ var _ = Describe("Manager", func() {
 	SetDefaultEventuallyPollingInterval(time.Second)
 
 	Context("Manager", func() {
-		It("should run successfully", func() {
+		// BeforeEach ensures controllerPodName is set before each test runs
+		BeforeEach(func() {
 			By("validating that the controller-manager pod is running as expected")
 			verifyControllerUp := func(g Gomega) {
 				// Get the name of the controller-manager pod
@@ -113,6 +114,11 @@ var _ = Describe("Manager", func() {
 				g.Expect(output).To(Equal("Running"), "Incorrect controller-manager pod status")
 			}
 			Eventually(verifyControllerUp).Should(Succeed())
+		})
+
+		It("should run successfully", func() {
+			// Controller pod validation happens in BeforeEach
+			Expect(controllerPodName).NotTo(BeEmpty())
 		})
 
 		Context("with curl-metrics-pod", func() {
