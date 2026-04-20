@@ -1,0 +1,103 @@
+name: OperatorHub Tests
+
+on:
+  pull_request:
+  merge_group:
+
+jobs:
+  operatorhub-tests:
+    name: OperatorHub Test Suite
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      OPP_PRODUCTION_TYPE: k8s
+
+    steps:
+      - name: Checkout community-operators repository
+        uses: actions/checkout@v6
+        with:
+          repository: k8s-operatorhub/community-operators
+          path: community-operators
+
+      - name: Checkout func-operator repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          path: func-operator
+
+      - name: Determine version
+        id: version
+        working-directory: func-operator
+        run: |
+          # Determine base branch (for PRs) or current branch (for merge queue)
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            BRANCH="${{ github.base_ref }}"
+          else
+            BRANCH="${{ github.ref_name }}"
+          fi
+
+          echo "Base branch: $BRANCH"
+
+          if [[ "$BRANCH" =~ ^release-([0-9]+\.[0-9]+)$ ]]; then
+            # Release branch: use next patch version
+            VERSION_PREFIX="${BASH_REMATCH[1]}"
+            LATEST_TAG=$(git tag -l "v${VERSION_PREFIX}.*" | sort -V | tail -n1)
+
+            if [ -z "$LATEST_TAG" ]; then
+              # No tags exist, use X.Y.0
+              VERSION="${VERSION_PREFIX}.0"
+            else
+              # Increment patch version
+              PATCH_VERSION=$(echo "$LATEST_TAG" | sed "s/v${VERSION_PREFIX}\.//" )
+              NEW_PATCH=$((PATCH_VERSION + 1))
+              VERSION="${VERSION_PREFIX}.${NEW_PATCH}"
+            fi
+          else
+            # Main branch or other: use next minor version
+            LATEST_TAG=$(git tag -l 'v*.*.*' | sort -V | tail -n1)
+
+            if [ -z "$LATEST_TAG" ]; then
+              # No tags exist, use 0.1.0
+              VERSION="0.1.0"
+            else
+              # Parse latest tag and increment minor
+              LATEST_TAG=${LATEST_TAG#v}
+              MAJOR=$(echo $LATEST_TAG | cut -d. -f1)
+              MINOR=$(echo $LATEST_TAG | cut -d. -f2)
+              NEW_MINOR=$((MINOR + 1))
+              VERSION="${MAJOR}.${NEW_MINOR}.0"
+            fi
+          fi
+
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Determined version: $VERSION"
+
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: func-operator/go.mod
+
+      - name: Generate operator bundle
+        working-directory: func-operator
+        run: make bundle VERSION=${{ steps.version.outputs.version }}
+
+      - name: Copy bundle to test structure
+        run: |
+          mkdir -p community-operators/operators/func-operator/${{ steps.version.outputs.version }}
+          cp -r func-operator/bundle/* community-operators/operators/func-operator/${{ steps.version.outputs.version }}/
+
+      - name: Run OperatorHub test suite
+        working-directory: community-operators
+        run: |
+          bash <(curl -sL https://raw.githubusercontent.com/redhat-openshift-ecosystem/community-operators-pipeline/ci/latest/ci/scripts/opp.sh) \
+            all \
+            operators/func-operator/${{ steps.version.outputs.version }}
+
+      - name: Upload test logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: operatorhub-test-logs
+          path: /tmp/op-test/log.out
+          retention-days: 7
+          if-no-files-found: warn
