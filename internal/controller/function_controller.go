@@ -144,7 +144,7 @@ func (r *FunctionReconciler) reconcile(ctx context.Context, function *v1alpha1.F
 	function.Status.Name = metadata.Name
 	applyLastDeployedAnnotation(ctx, function)
 
-	if err := r.ensureDeployment(ctx, function, repo, metadata); err != nil {
+	if err := r.reconcileDeployment(ctx, function, repo, metadata); err != nil {
 		return fmt.Errorf("deploying function failed: %w", err)
 	}
 
@@ -218,8 +218,7 @@ func (r *FunctionReconciler) prepareSource(ctx context.Context, function *v1alph
 	return repo, &metadata, nil
 }
 
-// ensureDeployment ensures the functions middleware is up-to-date
-func (r *FunctionReconciler) ensureDeployment(ctx context.Context, function *v1alpha1.Function, repo *git.Repository, metadata *funcfn.Function) error {
+func (r *FunctionReconciler) reconcileDeployment(ctx context.Context, function *v1alpha1.Function, repo *git.Repository, metadata *funcfn.Function) error {
 	logger := log.FromContext(ctx)
 	logger.Info("Reconciling Function")
 
