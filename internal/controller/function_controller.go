@@ -19,7 +19,6 @@ package controller
 import (
 	"context"
 	"fmt"
-	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -28,7 +27,6 @@ import (
 	fn "github.com/functions-dev/func-operator/internal/function"
 	"github.com/functions-dev/func-operator/internal/git"
 	v1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/api/equality"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
@@ -46,7 +44,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	"github.com/functions-dev/func-operator/api/v1alpha1"
-	rbacv1 "k8s.io/api/rbac/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 )
 
@@ -397,211 +394,6 @@ func markServiceStatus(ready string, function *v1alpha1.Function) {
 	default:
 		function.MarkServiceNotReady("ServiceReadyUnknown", "Underlying service readiness is unknown")
 	}
-}
-
-func (r *FunctionReconciler) setupPipelineRBAC(ctx context.Context, function *v1alpha1.Function) error {
-	if err := r.ensureDeployFunctionRole(ctx, function.Namespace); err != nil {
-		return fmt.Errorf("failed to ensure deploy-function role: %w", err)
-	}
-
-	if err := r.ensureDeployFunctionRoleBinding(ctx, function); err != nil {
-		return fmt.Errorf("failed to ensure deploy-function role binding: %w", err)
-	}
-
-	return nil
-}
-
-// ensureDeployFunctionRole ensures the deploy-function Role exists in the namespace and is up-to-date.
-// This is a namespace-scoped Role so multiple operator instances won't conflict.
-func (r *FunctionReconciler) ensureDeployFunctionRole(ctx context.Context, namespace string) error {
-	logger := log.FromContext(ctx)
-
-	// TODO: only add the rules which are needed for the functions deployer
-	expectedRole := &rbacv1.Role{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      deployFunctionRoleName,
-			Namespace: namespace,
-		},
-		Rules: []rbacv1.PolicyRule{
-			{
-				APIGroups: []string{"serving.knative.dev"},
-				Resources: []string{"services", "routes"},
-				Verbs:     []string{"create", "delete", "get", "list", "patch", "update", "watch"},
-			}, {
-				APIGroups: []string{"eventing.knative.dev"},
-				Resources: []string{"triggers"},
-				Verbs:     []string{"create", "delete", "get", "list", "patch", "update", "watch"},
-			}, {
-				APIGroups: []string{"apps"},
-				Resources: []string{"deployments", "replicasets"},
-				Verbs:     []string{"create", "delete", "get", "list", "patch", "update", "watch"},
-			}, {
-				APIGroups: []string{""},
-				Resources: []string{"services", "pods"},
-				Verbs:     []string{"create", "delete", "get", "list", "patch", "update", "watch"},
-			}, {
-				APIGroups: []string{"http.keda.sh"},
-				Resources: []string{"httpscaledobjects"},
-				Verbs:     []string{"create", "delete", "get", "list", "patch", "update", "watch"},
-			},
-		},
-	}
-
-	foundRole := &rbacv1.Role{}
-	err := r.Get(ctx, types.NamespacedName{Name: expectedRole.Name, Namespace: expectedRole.Namespace}, foundRole)
-	if err != nil {
-		if apierrors.IsNotFound(err) {
-			if err := r.Create(ctx, expectedRole); err != nil {
-				return fmt.Errorf("failed to create role: %w", err)
-			}
-			logger.Info("Created deploy-function role")
-			return nil
-		}
-		return fmt.Errorf("failed to get role: %w", err)
-	}
-
-	// Role exists - update if needed
-	if !equality.Semantic.DeepEqual(expectedRole.Rules, foundRole.Rules) {
-		foundRole.Rules = expectedRole.Rules
-		if err := r.Update(ctx, foundRole); err != nil {
-			return fmt.Errorf("failed to update role: %w", err)
-		}
-		logger.Info("Updated deploy-function role")
-	} else {
-		logger.Info("Deploy-function role already up to date")
-	}
-
-	return nil
-}
-
-// ensureDeployFunctionRoleBinding ensures the RoleBinding for the deploy-function role exists and is up-to-date.
-func (r *FunctionReconciler) ensureDeployFunctionRoleBinding(ctx context.Context, function *v1alpha1.Function) error {
-	logger := log.FromContext(ctx)
-
-	expectedRoleBinding := &rbacv1.RoleBinding{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "deploy-function-default",
-			Namespace: function.Namespace,
-			OwnerReferences: []metav1.OwnerReference{
-				{
-					APIVersion: v1alpha1.GroupVersion.String(),
-					Kind:       "Function",
-					Name:       function.Name,
-					UID:        function.UID,
-					Controller: ptr.To(true),
-				},
-			},
-		},
-		Subjects: []rbacv1.Subject{{
-			Kind:      "ServiceAccount",
-			Name:      "default",
-			Namespace: function.Namespace,
-		}},
-		RoleRef: rbacv1.RoleRef{
-			APIGroup: "rbac.authorization.k8s.io",
-			Kind:     "Role",
-			Name:     deployFunctionRoleName,
-		},
-	}
-
-	foundRoleBinding := &rbacv1.RoleBinding{}
-	err := r.Get(ctx, types.NamespacedName{Name: expectedRoleBinding.Name, Namespace: expectedRoleBinding.Namespace}, foundRoleBinding)
-	if err != nil {
-		if apierrors.IsNotFound(err) {
-			if err := r.Create(ctx, expectedRoleBinding); err != nil {
-				return fmt.Errorf("failed to create role binding: %w", err)
-			}
-			logger.Info("Created deploy-function role binding")
-			return nil
-		}
-		return fmt.Errorf("failed to get role binding: %w", err)
-	}
-
-	// Update if needed
-	if !equality.Semantic.DeepDerivative(expectedRoleBinding, foundRoleBinding) {
-		foundRoleBinding.Subjects = expectedRoleBinding.Subjects
-		foundRoleBinding.RoleRef = expectedRoleBinding.RoleRef
-		foundRoleBinding.OwnerReferences = expectedRoleBinding.OwnerReferences
-
-		if err := r.Update(ctx, foundRoleBinding); err != nil {
-			return fmt.Errorf("failed to update role binding: %w", err)
-		}
-		logger.Info("Updated deploy-function role binding")
-	} else {
-		logger.Info("Deploy-function role binding already up to date")
-	}
-
-	return nil
-}
-
-func (r *FunctionReconciler) persistRegistryAuthSecret(ctx context.Context, function *v1alpha1.Function) (string, error) {
-	logger := log.FromContext(ctx)
-
-	logger.Info("Persist registry auth secret temporarily")
-
-	authSecret := &v1.Secret{}
-	err := r.Get(ctx, types.NamespacedName{Name: function.Spec.Registry.AuthSecretRef.Name, Namespace: function.Namespace}, authSecret)
-	if err != nil {
-		logger.Error(err, "Failed to get registry auth secret", "secret", function.Spec.Registry.AuthSecretRef.Name, "namespace", function.Namespace)
-		return "", fmt.Errorf("failed to get registry auth secret: %w", err)
-	}
-
-	if authSecret.Type != v1.SecretTypeDockerConfigJson {
-		return "", fmt.Errorf("invalid registry auth secret type, must be of type %s", v1.SecretTypeDockerConfigJson)
-	}
-
-	if authSecret.Data[v1.DockerConfigJsonKey] == nil {
-		return "", fmt.Errorf("invalid registry auth secret data, must contain key %s", v1.DockerConfigJsonKey)
-	}
-
-	// persist secret temporarily
-	authFile, err := os.CreateTemp("", "auth-file-*.json")
-	if err != nil {
-		logger.Error(err, "Failed to create temp auth file")
-		return "", fmt.Errorf("failed to create temp auth file: %w", err)
-	}
-	defer authFile.Close()
-
-	_, err = authFile.Write(authSecret.Data[v1.DockerConfigJsonKey])
-	if err != nil {
-		logger.Error(err, "Failed to write temp auth file")
-		return "", fmt.Errorf("failed to write temp auth file: %w", err)
-	}
-
-	return authFile.Name(), nil
-}
-
-func (r *FunctionReconciler) deploy(ctx context.Context, function *v1alpha1.Function, repo *git.Repository) error {
-	logger := log.FromContext(ctx)
-
-	if err := r.setupPipelineRBAC(ctx, function); err != nil {
-		return fmt.Errorf("failed to setup pipeline RBAC: %w", err)
-	}
-
-	// deploy function
-	deployOptions := funccli.DeployOptions{}
-
-	if function.Spec.Registry.AuthSecretRef != nil && function.Spec.Registry.AuthSecretRef.Name != "" {
-		// we have a registry auth secret referenced -> use this for func deploy
-		authFile, err := r.persistRegistryAuthSecret(ctx, function)
-		if err != nil {
-			return fmt.Errorf("failed to persist registry auth secret temporarily: %w", err)
-		}
-
-		defer os.Remove(authFile)
-
-		deployOptions.RegistryAuthFile = authFile
-	}
-
-	logger.Info("Deploying function", "deployOptions", deployOptions)
-	err := r.FuncCliManager.Deploy(ctx, repo.Path(), function.Namespace, deployOptions)
-	if err != nil {
-		return fmt.Errorf("failed to deploy function: %w", err)
-	}
-
-	logger.Info("function deployed successfully")
-
-	return nil
 }
 
 func (r *FunctionReconciler) isDeployed(ctx context.Context, name, namespace string) (bool, error) {
