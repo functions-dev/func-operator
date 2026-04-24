@@ -119,11 +119,6 @@ func (r *FunctionReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		return ctrl.Result{}, reconcileErr
 	}
 
-	if err := r.removeFuncAnnotations(ctx, function); err != nil {
-		logger.Error(err, "Failed to remove func annotations")
-		return ctrl.Result{}, err
-	}
-
 	logger.Info("Reconciliation complete")
 	return ctrl.Result{}, nil
 }
@@ -143,6 +138,10 @@ func (r *FunctionReconciler) reconcile(ctx context.Context, function *v1alpha1.F
 
 	if err := r.reconcileDeployment(ctx, function, repo, metadata); err != nil {
 		return fmt.Errorf("deploying function failed: %w", err)
+	}
+
+	if err := r.removeFuncAnnotations(ctx, function); err != nil {
+		return fmt.Errorf("failed to remove func annotations: %w", err)
 	}
 
 	return nil
