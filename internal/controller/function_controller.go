@@ -103,6 +103,7 @@ func (r *FunctionReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 	}
 
 	function := original.DeepCopy()
+	function.SetDefaults(ctx)
 
 	// Create tracker and add to context
 	statusTracker := NewStatusTracker(r.Client, function)
@@ -188,11 +189,6 @@ func (r *FunctionReconciler) reconcile(ctx context.Context, function *v1alpha1.F
 
 // prepareSource clones the git repository and retrieves function metadata
 func (r *FunctionReconciler) prepareSource(ctx context.Context, function *v1alpha1.Function) (*git.Repository, *funcfn.Function, error) {
-	branchReference := "main"
-	if function.Spec.Repository.Branch != "" {
-		branchReference = function.Spec.Repository.Branch
-	}
-
 	gitAuthSecret := v1.Secret{}
 	if function.Spec.Repository.AuthSecretRef != nil {
 		if err := r.Get(ctx, types.NamespacedName{Namespace: function.Namespace, Name: function.Spec.Repository.AuthSecretRef.Name}, &gitAuthSecret); err != nil {
@@ -201,7 +197,7 @@ func (r *FunctionReconciler) prepareSource(ctx context.Context, function *v1alph
 		}
 	}
 
-	repo, err := r.GitManager.CloneRepository(ctx, function.Spec.Repository.URL, function.Spec.Repository.Path, branchReference, gitAuthSecret.Data)
+	repo, err := r.GitManager.CloneRepository(ctx, function.Spec.Repository.URL, function.Spec.Repository.Path, function.Spec.Repository.Branch, gitAuthSecret.Data)
 	if err != nil {
 		function.MarkSourceNotReady("GitCloneFailed", "Failed to clone repository: %s", err.Error())
 		return nil, nil, fmt.Errorf("failed to setup git repository: %w", err)
