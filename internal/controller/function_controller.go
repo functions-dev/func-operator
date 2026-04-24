@@ -131,6 +131,38 @@ func (r *FunctionReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 	return ctrl.Result{}, nil
 }
 
+func (r *FunctionReconciler) reconcile(ctx context.Context, function *v1alpha1.Function) error {
+	// Initialize conditions to start fresh each reconcile
+	function.InitializeConditions()
+
+	repo, metadata, err := r.prepareSource(ctx, function)
+	if err != nil {
+		return fmt.Errorf("prepare source failed: %w", err)
+	}
+	defer repo.Cleanup()
+
+	function.Status.Name = metadata.Name
+	applyLastDeployedAnnotation(ctx, function)
+
+	if err := r.ensureDeployment(ctx, function, repo, metadata); err != nil {
+		return fmt.Errorf("deploying function failed: %w", err)
+	}
+
+	return nil
+}
+
+func applyLastDeployedAnnotation(ctx context.Context, function *v1alpha1.Function) {
+	if val, ok := function.Annotations[funcAnnotationLastDeployed]; ok {
+		t, err := time.Parse(time.RFC3339, val)
+		if err != nil {
+			// log a warning, but don't return error, as this can't resolve on its own
+			log.FromContext(ctx).Info("could not parse "+funcAnnotationLastDeployed+" annotation", "error", err)
+		} else {
+			function.Status.Deployment.ImageBuilt = metav1.NewTime(t)
+		}
+	}
+}
+
 func (r *FunctionReconciler) removeFuncAnnotations(ctx context.Context, function *v1alpha1.Function) error {
 	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
 		latest := &v1alpha1.Function{}
@@ -152,39 +184,6 @@ func (r *FunctionReconciler) removeFuncAnnotations(ctx context.Context, function
 		latest.SetAnnotations(annotations)
 		return r.Update(ctx, latest)
 	})
-}
-
-func (r *FunctionReconciler) reconcile(ctx context.Context, function *v1alpha1.Function) error {
-	// Initialize conditions to start fresh each reconcile
-	function.InitializeConditions()
-
-	repo, metadata, err := r.prepareSource(ctx, function)
-	if err != nil {
-		return fmt.Errorf("prepare source failed: %w", err)
-	}
-	defer repo.Cleanup()
-
-	function.Status.Name = metadata.Name
-
-	if val, ok := function.Annotations[funcAnnotationLastDeployed]; ok {
-		t, err := time.Parse(time.RFC3339, val)
-		if err != nil {
-			// log a warning, but don't return error, as this can't resolve on its own
-			log.FromContext(ctx).Info("could not parse "+funcAnnotationLastDeployed+" annotation", "error", err)
-		} else {
-			function.Status.Deployment.ImageBuilt = metav1.NewTime(t)
-		}
-	}
-
-	if err := r.ensureDeployment(ctx, function, repo, metadata); err != nil {
-		return fmt.Errorf("deploying function failed: %w", err)
-	}
-
-	if err := FlushStatus(ctx, function); err != nil {
-		return fmt.Errorf("failed to update status: %w", err)
-	}
-
-	return nil
 }
 
 // prepareSource clones the git repository and retrieves function metadata
@@ -219,7 +218,7 @@ func (r *FunctionReconciler) prepareSource(ctx context.Context, function *v1alph
 	return repo, &metadata, nil
 }
 
-// ensureDeployment ensures the function is deployed and up-to-date
+// ensureDeployment ensures the functions middleware is up-to-date
 func (r *FunctionReconciler) ensureDeployment(ctx context.Context, function *v1alpha1.Function, repo *git.Repository, metadata *funcfn.Function) error {
 	logger := log.FromContext(ctx)
 	logger.Info("Reconciling Function")
@@ -232,7 +231,7 @@ func (r *FunctionReconciler) ensureDeployment(ctx context.Context, function *v1a
 
 	if !deployed {
 		logger.Info("Function is not deployed")
-		function.MarkDeployNotReady("NotDeployed", "Function not deployed yet")
+		function.MarkDeployNotReady("NotDeployed", "Function not deployed")
 		return nil
 	}
 
@@ -249,51 +248,117 @@ func (r *FunctionReconciler) ensureDeployment(ctx context.Context, function *v1a
 	return r.handleMiddlewareUpdate(ctx, function, repo, metadata)
 }
 
+// middlewareCheck is a sealed interface representing the result of inspecting a function's
+// middleware state. Implementations (middlewareUpToDate, middlewareOutdated) carry only the
+// fields relevant to their case, so the caller can type-switch without inspecting irrelevant data.
+type middlewareCheck interface {
+	middlewareCheck()
+}
+
+type middlewareUpToDate struct {
+	currentImage   string
+	serviceReady   string
+	currentVersion string
+	autoUpdate     autoUpdateStatus
+}
+
+func (middlewareUpToDate) middlewareCheck() {}
+
+type middlewareOutdated struct {
+	currentImage     string
+	serviceReady     string
+	currentVersion   string
+	availableVersion string
+	autoUpdate       autoUpdateStatus
+}
+
+func (middlewareOutdated) middlewareCheck() {}
+
+type autoUpdateStatus struct {
+	enabled bool
+	source  string // "function" or "operator"
+}
+
+func (r *FunctionReconciler) checkMiddlewareState(ctx context.Context, function *v1alpha1.Function, metadata *funcfn.Function) (middlewareCheck, error) {
+	desc, err := r.FuncCliManager.Describe(ctx, metadata.Name, function.Namespace)
+	if err != nil {
+		return nil, fmt.Errorf("failed to describe function: %w", err)
+	}
+
+	autoUpdate, err := r.getAutoUpdateStatus(ctx, function)
+	if err != nil {
+		return nil, fmt.Errorf("failed to check middleware update setting: %w", err)
+	}
+
+	latestVersion, err := r.FuncCliManager.GetLatestMiddlewareVersion(ctx, metadata.Runtime, metadata.Invoke)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get latest middleware version: %w", err)
+	}
+
+	if latestVersion == desc.Middleware.Version {
+		return middlewareUpToDate{
+			currentImage:   desc.Image,
+			serviceReady:   desc.Ready,
+			currentVersion: desc.Middleware.Version,
+			autoUpdate:     autoUpdate,
+		}, nil
+	}
+
+	return middlewareOutdated{
+		currentImage:     desc.Image,
+		serviceReady:     desc.Ready,
+		currentVersion:   desc.Middleware.Version,
+		availableVersion: latestVersion,
+		autoUpdate:       autoUpdate,
+	}, nil
+}
+
+func (r *FunctionReconciler) getAutoUpdateStatus(ctx context.Context, function *v1alpha1.Function) (autoUpdateStatus, error) {
+	enabled, source, err := r.isMiddlewareUpdateEnabled(ctx, function)
+	if err != nil {
+		return autoUpdateStatus{}, err
+	}
+	return autoUpdateStatus{enabled: enabled, source: source}, nil
+}
+
 // handleMiddlewareUpdate checks if the function is using the latest middleware and redeploys if needed
 func (r *FunctionReconciler) handleMiddlewareUpdate(ctx context.Context, function *v1alpha1.Function, repo *git.Repository, metadata *funcfn.Function) error {
 	logger := log.FromContext(ctx)
 
-	functionDescribe, err := r.FuncCliManager.Describe(ctx, metadata.Name, function.Namespace)
+	check, err := r.checkMiddlewareState(ctx, function, metadata)
 	if err != nil {
-		return fmt.Errorf("failed to describe function to get image details: %w", err)
-	}
-	function.Status.Deployment.Image = functionDescribe.Image
-	markServiceStatus(functionDescribe.Ready, function)
-
-	isMiddlewareUpdateEnabled, source, err := r.isMiddlewareUpdateEnabled(ctx, function)
-	if err != nil {
-		function.MarkMiddlewareNotUpToDate("MiddlewareCheckFailed", "Failed to check if middleware should be updated: %s", err)
-		return fmt.Errorf("failed to check if middleware should be updated: %w", err)
-	}
-	function.Status.Middleware.AutoUpdate.Enabled = isMiddlewareUpdateEnabled
-	function.Status.Middleware.AutoUpdate.Source = source
-	function.Status.Middleware.Current = functionDescribe.Middleware.Version
-	function.Status.Middleware.PendingRebuild = false
-
-	isOnLatestMiddleware, err := r.isMiddlewareLatest(ctx, metadata, function.Namespace)
-	if err != nil {
-		function.MarkMiddlewareNotUpToDate("MiddlewareCheckFailed", "Failed to check middleware version: %s", err.Error())
-		return fmt.Errorf("failed to check if function is using latest middleware: %w", err)
+		function.MarkMiddlewareNotUpToDate("MiddlewareCheckFailed", "Failed to check middleware: %s", err)
+		return err
 	}
 
-	if !isOnLatestMiddleware {
-		latestMiddleware, err := r.FuncCliManager.GetLatestMiddlewareVersion(ctx, metadata.Runtime, metadata.Invoke)
-		if err != nil {
-			return fmt.Errorf("failed to get latest available middleware version: %w", err)
-		}
-		function.Status.Middleware.Available = ptr.To(latestMiddleware)
+	switch check := check.(type) {
+	case middlewareUpToDate:
+		logger.Info("Function is on latest middleware. No redeploy needed", "version", check.currentVersion)
+		function.Status.Deployment.Image = check.currentImage
+		function.Status.Middleware.Current = check.currentVersion
+		function.Status.Middleware.AutoUpdate.Enabled = check.autoUpdate.enabled
+		function.Status.Middleware.AutoUpdate.Source = check.autoUpdate.source
+		function.Status.Middleware.PendingRebuild = false
+		markServiceStatus(check.serviceReady, function)
+		function.MarkMiddlewareUpToDate()
 
-		if !isMiddlewareUpdateEnabled {
+	case middlewareOutdated:
+		function.Status.Deployment.Image = check.currentImage
+		function.Status.Middleware.Current = check.currentVersion
+		function.Status.Middleware.AutoUpdate.Enabled = check.autoUpdate.enabled
+		function.Status.Middleware.AutoUpdate.Source = check.autoUpdate.source
+		function.Status.Middleware.Available = ptr.To(check.availableVersion)
+		function.Status.Middleware.PendingRebuild = false
+		markServiceStatus(check.serviceReady, function)
+
+		if !check.autoUpdate.enabled {
 			logger.Info("Skipping middleware update, as middleware update is disabled")
-			function.MarkMiddlewareNotUpToDateIntentionally("SkipMiddlewareUpdate", "Skipping middleware update as update is disabled (source: %s)", source)
-			// Don't return - continue to update deployment status
+			function.MarkMiddlewareNotUpToDateIntentionally("SkipMiddlewareUpdate", "Skipping middleware update as update is disabled (source: %s)", check.autoUpdate.source)
 		} else {
-			logger.Info(fmt.Sprintf("Function is not on latest middleware (%q vs %q) and middleware update is enabled. Will redeploy", latestMiddleware, functionDescribe.Middleware.Version))
-			function.MarkMiddlewareNotUpToDate("MiddlewareOutdated", "Middleware is outdated (%s available), redeploying...", latestMiddleware)
-
+			logger.Info("Middleware outdated, redeploying", "current", check.currentVersion, "available", check.availableVersion)
+			function.MarkMiddlewareNotUpToDate("MiddlewareOutdated", "Middleware is outdated (%s available), redeploying...", check.availableVersion)
 			function.Status.Middleware.PendingRebuild = true
 
-			// Flush status before long deploy operation
 			if err := FlushStatus(ctx, function); err != nil {
 				logger.Error(err, "Failed to update status before redeployment")
 			}
@@ -303,33 +368,24 @@ func (r *FunctionReconciler) handleMiddlewareUpdate(ctx context.Context, functio
 				return fmt.Errorf("failed to redeploy function: %w", err)
 			}
 
+			desc, err := r.FuncCliManager.Describe(ctx, metadata.Name, function.Namespace)
+			if err != nil {
+				return fmt.Errorf("failed to describe function after deploy: %w", err)
+			}
+			function.Status.Deployment.Image = desc.Image
+			function.Status.Middleware.Current = desc.Middleware.Version
 			function.Status.Middleware.PendingRebuild = false
 			function.Status.Middleware.LastRebuild = metav1.Now()
 			function.Status.Deployment.ImageBuilt = metav1.Now()
+			function.Status.Middleware.Available = nil
+			markServiceStatus(desc.Ready, function)
 
-			function.RecordHistoryEvent(fmt.Sprintf("Middleware updated from %q to %q", functionDescribe.Middleware.Version, latestMiddleware))
-
-			// After successful deployment, middleware is now up-to-date
+			function.RecordHistoryEvent(fmt.Sprintf("Middleware updated from %q to %q", check.currentVersion, check.availableVersion))
 			function.MarkMiddlewareUpToDate()
-			function.Status.Middleware.Available = nil // if function is on latest, we don't need to show this field
 		}
-	} else {
-		logger.Info(fmt.Sprintf("Function is deployed with latest middleware (%s). No need to redeploy", functionDescribe.Middleware.Version))
-		function.MarkMiddlewareUpToDate()
-		function.Status.Middleware.Available = nil // if function is on latest, we don't need to show this field
 	}
-
-	// Update deployment status
-	functionDescribe, err = r.FuncCliManager.Describe(ctx, metadata.Name, function.Namespace)
-	if err != nil {
-		return fmt.Errorf("failed to describe function to get image details: %w", err)
-	}
-	function.Status.Deployment.Image = functionDescribe.Image
-	function.Status.Middleware.Current = functionDescribe.Middleware.Version
-	markServiceStatus(functionDescribe.Ready, function)
 
 	function.MarkDeployReady()
-
 	return nil
 }
 
@@ -620,20 +676,6 @@ func (r *FunctionReconciler) findFunctionsForConfigMap(ctx context.Context, _ cl
 
 	logger.Info("Enqueueing Functions for reconciliation due to ConfigMap change", "count", len(requests))
 	return requests
-}
-
-func (r *FunctionReconciler) isMiddlewareLatest(ctx context.Context, metadata *funcfn.Function, namespace string) (bool, error) {
-	latestMiddleware, err := r.FuncCliManager.GetLatestMiddlewareVersion(ctx, metadata.Runtime, metadata.Invoke)
-	if err != nil {
-		return false, fmt.Errorf("failed to get latest available middleware version: %w", err)
-	}
-
-	functionMiddleware, err := r.FuncCliManager.GetMiddlewareVersion(ctx, metadata.Name, namespace)
-	if err != nil {
-		return false, fmt.Errorf("failed to get middleware version of function: %w", err)
-	}
-
-	return latestMiddleware == functionMiddleware, nil
 }
 
 // isMiddlewareUpdateEnabled returns if the middleware should be updated given by the functions spec or the operators
