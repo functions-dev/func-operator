@@ -226,7 +226,7 @@ func (r *FunctionReconciler) reconcileDeployment(ctx context.Context, function *
 
 	if !deployed {
 		logger.Info("Function is not deployed")
-		function.MarkDeployNotReady("NotDeployed", "Function not deployed")
+		function.MarkDeployNotReady("NotDeployed", "Function not deployed yet")
 		return nil
 	}
 
