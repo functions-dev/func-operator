@@ -134,7 +134,6 @@ func (r *FunctionReconciler) reconcile(ctx context.Context, function *v1alpha1.F
 	defer repo.Cleanup()
 
 	function.Status.Name = metadata.Name
-	applyLastDeployedAnnotation(ctx, function)
 
 	if err := r.reconcileDeployment(ctx, function, repo, metadata); err != nil {
 		return fmt.Errorf("deploying function failed: %w", err)
@@ -238,6 +237,7 @@ func (r *FunctionReconciler) reconcileDeployment(ctx context.Context, function *
 	}
 	function.Status.Deployment.Deployer = deployer
 	function.Status.Deployment.Runtime = metadata.Runtime
+	applyLastDeployedAnnotation(ctx, function)
 
 	// Function is deployed - check middleware version
 	return r.handleMiddlewareUpdate(ctx, function, repo, metadata)
