@@ -137,7 +137,7 @@ kubectl get function my-function -o yaml
 The status will include:
 - Function name and conditions
 - Git information (branch, commit, last checked time)
-- Deployment details (image, runtime, build time, deployer)
+- Deployment details (image, revision, runtime, build time, deployer)
 - Middleware status (current and available versions, auto-update settings, pending rebuild status)
 
 ## Advanced Use Cases
@@ -309,6 +309,7 @@ make lint
 | `git.lastChecked` | timestamp | Last time the repository was checked |
 | `deployment.image` | string | Container image of the deployed function |
 | `deployment.imageBuilt` | timestamp | When the current image was built |
+| `deployment.revision` | string | Latest commit SHA of the deployed revision |
 | `deployment.deployer` | string | Tool/method used to deploy the function (e.g., "func") |
 | `deployment.runtime` | string | Detected function runtime |
 | `middleware.current` | string | Current middleware version in use |
