@@ -11,6 +11,8 @@ spec:
     kind: Function
     listKind: FunctionList
     plural: functions
+    shortNames:
+    - func
     singular: function
   scope: Namespaced
   versions:
@@ -22,6 +24,14 @@ spec:
     - description: Ready reason
       jsonPath: .status.conditions[?(@.type=="Ready")].reason
       name: Reason
+      type: string
+    - description: Current deployed Middleware Version
+      jsonPath: .status.middleware.current
+      name: Middleware
+      type: string
+    - description: Pending Rebuild
+      jsonPath: .status.middleware.pendingRebuild
+      name: Pending Rebuild
       type: string
     - jsonPath: .metadata.creationTimestamp
       name: Age
