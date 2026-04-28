@@ -84,11 +84,16 @@ func RunFuncDeploy(functionDir string, optFns ...FuncDeployOption) (string, erro
 	var output string
 	var err error
 
-	// Retry up to 3 times with 5s delay between attempts
-	for attempt := 0; attempt < 3; attempt++ {
+	maxAttempts := 5
+	retryDelay := 10 * time.Second
+
+	for attempt := 0; attempt < maxAttempts; attempt++ {
 		if attempt > 0 {
-			time.Sleep(5 * time.Second)
-			_, _ = fmt.Fprintf(ginkgo.GinkgoWriter, "func deploy attempt %d failed: %v (retrying)\n", attempt, err)
+			_, _ = fmt.Fprintf(ginkgo.GinkgoWriter,
+				"func deploy attempt %d/%d failed: %v (retrying in %s)\n",
+				attempt, maxAttempts, err, retryDelay)
+			time.Sleep(retryDelay)
+			retryDelay *= 2
 		}
 
 		if opts.CliVersion != "" {
