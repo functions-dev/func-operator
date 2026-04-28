@@ -2,6 +2,7 @@ package v1alpha1
 
 import (
 	"fmt"
+	"time"
 
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -224,11 +225,25 @@ func (f *Function) MarkServiceNotReady(reason, messageFormat string, messageA ..
 
 const MaxHistoryEntries = 20
 
-func (f *Function) RecordHistoryEvent(message string) {
-	f.Status.History = append([]FunctionStatusHistoryEntry{{
+type historyEventOption func(entry *FunctionStatusHistoryEntry)
+
+func WithHistoryEventTime(t time.Time) historyEventOption {
+	return func(entry *FunctionStatusHistoryEntry) {
+		entry.Time = metav1.NewTime(t)
+	}
+}
+
+func (f *Function) RecordHistoryEvent(message string, options ...historyEventOption) {
+	entry := FunctionStatusHistoryEntry{
 		Time:    metav1.Now(),
 		Message: message,
-	}}, f.Status.History...)
+	}
+
+	for _, opt := range options {
+		opt(&entry)
+	}
+
+	f.Status.History = append([]FunctionStatusHistoryEntry{entry}, f.Status.History...)
 	if len(f.Status.History) > MaxHistoryEntries {
 		f.Status.History = f.Status.History[:MaxHistoryEntries]
 	}
