@@ -2,6 +2,7 @@ package v1alpha1
 
 import (
 	"fmt"
+	"sort"
 	"time"
 
 	"k8s.io/apimachinery/pkg/api/meta"
@@ -243,7 +244,10 @@ func (f *Function) RecordHistoryEvent(message string, options ...historyEventOpt
 		opt(&entry)
 	}
 
-	f.Status.History = append([]FunctionStatusHistoryEntry{entry}, f.Status.History...)
+	f.Status.History = append(f.Status.History, entry)
+	sort.Slice(f.Status.History, func(i, j int) bool {
+		return f.Status.History[i].Time.After(f.Status.History[j].Time.Time)
+	})
 	if len(f.Status.History) > MaxHistoryEntries {
 		f.Status.History = f.Status.History[:MaxHistoryEntries]
 	}
