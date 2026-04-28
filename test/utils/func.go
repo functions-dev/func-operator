@@ -81,6 +81,21 @@ func RunFuncDeploy(functionDir string, optFns ...FuncDeployOption) (string, erro
 		args = append(args, "--deployer", opts.Deployer)
 	}
 
+	// When using the pack builder, create a per-deploy PACK_HOME to prevent
+	// parallel builds from corrupting the shared ~/.pack/volume-keys.toml.
+	if opts.Builder == "pack" {
+		packHome, err := os.MkdirTemp("", "pack-home-*")
+		if err != nil {
+			return "", fmt.Errorf("failed to create PACK_HOME: %w", err)
+		}
+		defer os.RemoveAll(packHome)
+
+		if opts.EnvVars == nil {
+			opts.EnvVars = make(map[string]string)
+		}
+		opts.EnvVars["PACK_HOME"] = packHome
+	}
+
 	var output string
 	var err error
 
@@ -96,11 +111,21 @@ func RunFuncDeploy(functionDir string, optFns ...FuncDeployOption) (string, erro
 			retryDelay *= 2
 		}
 
+		var funcBinary string
 		if opts.CliVersion != "" {
-			output, err = RunFuncWithVersion(opts.CliVersion, "deploy", args...)
+			funcBinary, err = ensureFuncVersion(opts.CliVersion)
+			if err != nil {
+				return "", err
+			}
 		} else {
-			output, err = RunFunc("deploy", args...)
+			funcBinary = "func"
 		}
+
+		cmd := exec.Command(funcBinary, append([]string{"deploy"}, args...)...)
+		for k, v := range opts.EnvVars {
+			cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", k, v))
+		}
+		output, err = Run(cmd)
 
 		if err == nil {
 			return output, nil
@@ -117,6 +142,7 @@ type FuncDeployOptions struct {
 	Builder          string
 	Deployer         string
 	CliVersion       string
+	EnvVars          map[string]string
 }
 
 type FuncDeployOption func(*FuncDeployOptions)
@@ -142,6 +168,12 @@ func WithDeployer(deployer string) FuncDeployOption {
 func WithDeployCliVersion(version string) FuncDeployOption {
 	return func(opts *FuncDeployOptions) {
 		opts.CliVersion = version
+	}
+}
+
+func WithEnvVars(envVars map[string]string) FuncDeployOption {
+	return func(opts *FuncDeployOptions) {
+		opts.EnvVars = envVars
 	}
 }
 
