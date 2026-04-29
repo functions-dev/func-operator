@@ -128,7 +128,7 @@ func (m *managerImpl) getSSHClientOptions(authSecret map[string][]byte) []client
 		if err == nil {
 			defer os.Remove(tmpFile.Name())
 			if _, err := tmpFile.Write(knownHostsData); err == nil {
-				tmpFile.Close()
+				_ = tmpFile.Close()
 				db, err := knownhosts.NewDB(tmpFile.Name())
 				if err == nil {
 					auth.HostKeyCallback = db.HostKeyCallback()
