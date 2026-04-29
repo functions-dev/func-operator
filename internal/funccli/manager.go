@@ -20,6 +20,8 @@ import (
 	funcfn "knative.dev/func/pkg/functions"
 )
 
+var ErrFunctionNotFound = fmt.Errorf("function not found")
+
 const (
 	githubAPIURL         = "https://api.github.com/repos/knative/func/releases/latest"
 	defaultCheckInterval = 5 * time.Minute
@@ -190,6 +192,9 @@ func (m *managerImpl) Run(ctx context.Context, dir string, args ...string) (stri
 func (m *managerImpl) Describe(ctx context.Context, name, namespace string) (funcfn.Instance, error) {
 	out, err := m.Run(ctx, "", "describe", "-n", namespace, "-o", "json", name)
 	if err != nil {
+		if strings.Contains(err.Error(), "not found") || strings.Contains(err.Error(), "no describe function") {
+			return funcfn.Instance{}, ErrFunctionNotFound
+		}
 		return funcfn.Instance{}, fmt.Errorf("failed to describe function: %q. %w", out, err)
 	}
 
