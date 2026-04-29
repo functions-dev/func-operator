@@ -20,13 +20,13 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+        builder: [ pack, s2i ]
+        deployer: [ knative, raw, keda ]
         include:
-          - { builder: pack, deployer: knative, priority: true }
-          - { builder: pack, deployer: keda,    priority: true }
-          - { builder: pack, deployer: raw,     priority: false }
-          - { builder: s2i,  deployer: knative, priority: true }
-          - { builder: s2i,  deployer: keda,    priority: false }
-          - { builder: s2i,  deployer: raw,     priority: true }
+          - { deployer: knative, priority: true } # run always the knative tests, as they cover the full suite
+          # one keda & one raw deployer test on different builders
+          - { builder: pack, deployer: keda, priority: true }
+          - { builder: s2i,  deployer: raw,  priority: true }
     steps:
       - name: Free up disk space
         run: |
