@@ -15,11 +15,18 @@ jobs:
   test-e2e:
     name: E2E Tests (${{ matrix.builder }}/${{ matrix.deployer }})
     runs-on: ubuntu-latest
+    # On PRs only priority combos run; merge queue and push run all 6
+    if: matrix.priority || github.event_name != 'pull_request'
     strategy:
       fail-fast: false
       matrix:
-        builder: [pack, s2i]
-        deployer: [knative, raw, keda]
+        include:
+          - { builder: pack, deployer: knative, priority: true }
+          - { builder: pack, deployer: keda,    priority: true }
+          - { builder: pack, deployer: raw,     priority: false }
+          - { builder: s2i,  deployer: knative, priority: true }
+          - { builder: s2i,  deployer: keda,    priority: false }
+          - { builder: s2i,  deployer: raw,     priority: true }
     steps:
       - name: Free up disk space
         run: |
