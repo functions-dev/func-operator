@@ -107,7 +107,7 @@ func (m *managerImpl) getSSHClientOptions(authSecret map[string][]byte) []client
 	privateKey, hasKey := authSecret["sshPrivateKey"]
 	if !hasKey {
 		return []client.Option{
-			client.WithSSHAuth(&ssh.PublicKeys{
+			client.WithSSHAuth(&ssh.Password{
 				User: "git",
 				HostKeyCallbackHelper: ssh.HostKeyCallbackHelper{
 					HostKeyCallback: gossh.InsecureIgnoreHostKey(),
