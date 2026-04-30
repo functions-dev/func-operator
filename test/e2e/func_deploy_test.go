@@ -117,6 +117,52 @@ func functionNotReadyWithAuthError(functionName, functionNamespace string) func(
 	}
 }
 
+// createSSHFunctionAndExpectReady creates a K8s Secret with the SSH private key, creates a Function
+// CR pointing at the SSH repo URL with authSecretRef, and waits for it to become Ready.
+// It returns the Function name so callers can store it for cleanup.
+func createSSHFunctionAndExpectReady(
+	sshKeyPath, sshRepoURL, functionNamespace, namePrefix string,
+) string {
+	privateKeyBytes, err := os.ReadFile(sshKeyPath)
+	Expect(err).NotTo(HaveOccurred())
+
+	secret := &v1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			GenerateName: "git-ssh-auth-",
+			Namespace:    functionNamespace,
+		},
+		Data: map[string][]byte{
+			"sshPrivateKey": privateKeyBytes,
+		},
+	}
+	err = k8sClient.Create(ctx, secret)
+	Expect(err).NotTo(HaveOccurred())
+	utils.DeferCleanupOnSuccess(func() {
+		_ = k8sClient.Delete(ctx, secret)
+	})
+
+	function := &functionsdevv1alpha1.Function{
+		ObjectMeta: metav1.ObjectMeta{
+			GenerateName: namePrefix,
+			Namespace:    functionNamespace,
+		},
+		Spec: functionsdevv1alpha1.FunctionSpec{
+			Repository: functionsdevv1alpha1.FunctionSpecRepository{
+				URL: sshRepoURL,
+				AuthSecretRef: &v1.LocalObjectReference{
+					Name: secret.Name,
+				},
+			},
+		},
+	}
+
+	err = k8sClient.Create(ctx, function)
+	Expect(err).NotTo(HaveOccurred())
+
+	Eventually(functionBecomesReady(function.Name, functionNamespace)).Should(Succeed())
+	return function.Name
+}
+
 // functionNotDeployed check if the function is not ready as the function was not deployed yet
 func functionNotDeployed(functionName, functionNamespace string) func(g Gomega) {
 	return expectFunctionConditionFalseWithReason(
@@ -534,6 +580,7 @@ var _ = Describe("Operator", func() {
 	Context("with an SSH repository URL", func() {
 		var sshRepoURL string
 		var repoDir string
+		var sshKeyPath string
 		var functionName, functionNamespace string
 
 		BeforeEach(func() {
@@ -544,6 +591,22 @@ var _ = Describe("Operator", func() {
 			repoName, repoURL, cleanup, err := repoProvider.CreateRandomRepo(username, false)
 			Expect(err).NotTo(HaveOccurred())
 			utils.DeferCleanupOnSuccess(cleanup)
+
+			// Generate SSH keypair and register with Gitea
+			keyDir, err := os.MkdirTemp("", "ssh-e2e-*")
+			Expect(err).NotTo(HaveOccurred())
+			utils.DeferCleanupOnSuccess(os.RemoveAll, keyDir)
+
+			sshKeyPath = filepath.Join(keyDir, "id_ed25519")
+			cmd := exec.Command("ssh-keygen", "-t", "ed25519", "-f", sshKeyPath, "-N", "", "-q")
+			_, err = utils.Run(cmd)
+			Expect(err).NotTo(HaveOccurred())
+
+			pubKeyBytes, err := os.ReadFile(sshKeyPath + ".pub")
+			Expect(err).NotTo(HaveOccurred())
+
+			err = repoProvider.CreateSSHKey(username, password, "e2e-key", string(pubKeyBytes))
+			Expect(err).NotTo(HaveOccurred())
 
 			sshRepoURL, err = repoProvider.SSHRepoURL(username, repoName)
 			Expect(err).NotTo(HaveOccurred())
@@ -581,25 +644,9 @@ var _ = Describe("Operator", func() {
 			}
 		})
 
-		It("should mark the function as ready with a public SSH repo", func() {
-			function := &functionsdevv1alpha1.Function{
-				ObjectMeta: metav1.ObjectMeta{
-					GenerateName: "my-ssh-function-",
-					Namespace:    functionNamespace,
-				},
-				Spec: functionsdevv1alpha1.FunctionSpec{
-					Repository: functionsdevv1alpha1.FunctionSpecRepository{
-						URL: sshRepoURL,
-					},
-				},
-			}
-
-			err := k8sClient.Create(ctx, function)
-			Expect(err).NotTo(HaveOccurred())
-
-			functionName = function.Name
-
-			Eventually(functionBecomesReady(functionName, functionNamespace)).Should(Succeed())
+		It("should mark the function as ready with SSH key auth", func() {
+			functionName = createSSHFunctionAndExpectReady(
+				sshKeyPath, sshRepoURL, functionNamespace, "my-ssh-function-")
 		})
 	})
 	Context("with a private SSH repository", func() {
@@ -676,45 +723,8 @@ var _ = Describe("Operator", func() {
 		})
 
 		It("should mark the function as ready when SSH key authSecretRef is provided", func() {
-			privateKeyBytes, err := os.ReadFile(sshKeyPath)
-			Expect(err).NotTo(HaveOccurred())
-
-			secret := &v1.Secret{
-				ObjectMeta: metav1.ObjectMeta{
-					GenerateName: "git-ssh-auth-",
-					Namespace:    functionNamespace,
-				},
-				Data: map[string][]byte{
-					"sshPrivateKey": privateKeyBytes,
-				},
-			}
-			err = k8sClient.Create(ctx, secret)
-			Expect(err).NotTo(HaveOccurred())
-			utils.DeferCleanupOnSuccess(func() {
-				_ = k8sClient.Delete(ctx, secret)
-			})
-
-			function := &functionsdevv1alpha1.Function{
-				ObjectMeta: metav1.ObjectMeta{
-					GenerateName: "my-ssh-private-function-",
-					Namespace:    functionNamespace,
-				},
-				Spec: functionsdevv1alpha1.FunctionSpec{
-					Repository: functionsdevv1alpha1.FunctionSpecRepository{
-						URL: sshRepoURL,
-						AuthSecretRef: &v1.LocalObjectReference{
-							Name: secret.Name,
-						},
-					},
-				},
-			}
-
-			err = k8sClient.Create(ctx, function)
-			Expect(err).NotTo(HaveOccurred())
-
-			functionName = function.Name
-
-			Eventually(functionBecomesReady(functionName, functionNamespace)).Should(Succeed())
+			functionName = createSSHFunctionAndExpectReady(
+				sshKeyPath, sshRepoURL, functionNamespace, "my-ssh-private-function-")
 		})
 
 		It("should fail with authentication error when authSecretRef is not provided", func() {
