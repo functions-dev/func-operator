@@ -49,6 +49,10 @@ func (r *FunctionReconciler) deploy(ctx context.Context, function *v1alpha1.Func
 		defer os.Remove(authFile)
 
 		deployOptions.RegistryAuthFile = authFile
+
+		if err := r.ensureImagePullSecret(ctx, function); err != nil {
+			return fmt.Errorf("failed to ensure image pull secret: %w", err)
+		}
 	}
 
 	logger.Info("Deploying function", "deployOptions", deployOptions)
@@ -59,6 +63,32 @@ func (r *FunctionReconciler) deploy(ctx context.Context, function *v1alpha1.Func
 
 	logger.Info("function deployed successfully")
 
+	return nil
+}
+
+func (r *FunctionReconciler) ensureImagePullSecret(ctx context.Context, function *v1alpha1.Function) error {
+	logger := log.FromContext(ctx)
+
+	secretName := function.Spec.Registry.AuthSecretRef.Name
+
+	sa := &v1.ServiceAccount{}
+	if err := r.Get(ctx, types.NamespacedName{Name: "default", Namespace: function.Namespace}, sa); err != nil {
+		return fmt.Errorf("failed to get default service account: %w", err)
+	}
+
+	for _, ref := range sa.ImagePullSecrets {
+		if ref.Name == secretName {
+			logger.Info("Image pull secret already present on default ServiceAccount", "secret", secretName)
+			return nil
+		}
+	}
+
+	sa.ImagePullSecrets = append(sa.ImagePullSecrets, v1.LocalObjectReference{Name: secretName})
+	if err := r.Update(ctx, sa); err != nil {
+		return fmt.Errorf("failed to update default service account with image pull secret: %w", err)
+	}
+
+	logger.Info("Added image pull secret to default ServiceAccount", "secret", secretName)
 	return nil
 }
 

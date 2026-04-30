@@ -19,6 +19,7 @@ rules:
   - pods
   - pods/attach
   - secrets
+  - serviceaccounts
   - services
   verbs:
   - create
