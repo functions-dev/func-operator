@@ -649,6 +649,125 @@ var _ = Describe("Operator", func() {
 				sshKeyPath, sshRepoURL, functionNamespace, "my-ssh-function-")
 		})
 	})
+	// This test verifies that the operator adds the registry auth secret as an
+	// imagePullSecret to the default ServiceAccount during a redeploy.
+	//
+	// It uses a dummy dockerconfigjson secret and the unauthenticated kind-registry
+	// because the kind-registry's built-in htpasswd auth is all-or-nothing (no
+	// per-repository scoping), so enabling auth would break all other tests. Running
+	// a second authenticated registry adds too much infrastructure overhead for
+	// verifying this wiring. The unit tests in function_deploy_test.go cover the
+	// ensureImagePullSecret logic itself; this test confirms the operator calls it
+	// during a real redeploy.
+	Context("with a registry auth secret", func() {
+		var repoURL string
+		var repoDir string
+		var functionName, functionNamespace string
+
+		BeforeEach(func() {
+			if os.Getenv("DEFAULT_DEPLOYER") == "keda" || os.Getenv("DEFAULT_DEPLOYER") == "raw" {
+				Skip("Skipping registry auth test for Keda & raw deployer, " +
+					"as those are not supported on used CLI version (1.20.x) of this tests")
+			}
+
+			var err error
+
+			username, password, _, cleanup, err := repoProvider.CreateRandomUser()
+			Expect(err).NotTo(HaveOccurred())
+			utils.DeferCleanupOnSuccess(cleanup)
+
+			_, repoURL, cleanup, err = repoProvider.CreateRandomRepo(username, false)
+			Expect(err).NotTo(HaveOccurred())
+			utils.DeferCleanupOnSuccess(cleanup)
+
+			functionNamespace, err = utils.GetTestNamespace()
+			Expect(err).NotTo(HaveOccurred())
+			utils.DeferCleanupOnSuccess(cleanupNamespaces, functionNamespace)
+
+			oldFuncVersion := "v1.20.2"
+			repoDir, err = utils.InitializeRepoWithFunction(
+				repoURL,
+				username,
+				password,
+				"go",
+				utils.WithCliVersion(oldFuncVersion))
+			Expect(err).NotTo(HaveOccurred())
+			utils.DeferCleanupOnSuccess(os.RemoveAll, repoDir)
+
+			out, err := utils.RunFuncDeploy(repoDir,
+				utils.WithNamespace(functionNamespace),
+				utils.WithDeployCliVersion(oldFuncVersion))
+			Expect(err).NotTo(HaveOccurred())
+			_, _ = fmt.Fprint(GinkgoWriter, out)
+
+			utils.DeferCleanupOnSuccess(func() {
+				_, _ = utils.RunFunc("delete", "--path", repoDir, "--namespace", functionNamespace)
+			})
+
+			err = utils.CommitAndPush(repoDir, "Update func.yaml after deploy", "func.yaml")
+			Expect(err).NotTo(HaveOccurred())
+		})
+
+		AfterEach(func() {
+			logFailedTestDetails(functionName, functionNamespace)
+		})
+
+		It("should add the registry auth secret as imagePullSecret on the default ServiceAccount", func() {
+			secret := &v1.Secret{
+				ObjectMeta: metav1.ObjectMeta{
+					GenerateName: "registry-auth-",
+					Namespace:    functionNamespace,
+				},
+				Type: v1.SecretTypeDockerConfigJson,
+				Data: map[string][]byte{
+					v1.DockerConfigJsonKey: []byte(`{"auths":{"kind-registry:5000":{"auth":"dGVzdDp0ZXN0"}}}`),
+				},
+			}
+			err := k8sClient.Create(ctx, secret)
+			Expect(err).NotTo(HaveOccurred())
+			utils.DeferCleanupOnSuccess(func() {
+				_ = k8sClient.Delete(ctx, secret)
+			})
+
+			function := &functionsdevv1alpha1.Function{
+				ObjectMeta: metav1.ObjectMeta{
+					GenerateName: "my-function-pullsecret-",
+					Namespace:    functionNamespace,
+				},
+				Spec: functionsdevv1alpha1.FunctionSpec{
+					Repository: functionsdevv1alpha1.FunctionSpecRepository{
+						URL: repoURL,
+					},
+					Registry: functionsdevv1alpha1.FunctionSpecRegistry{
+						AuthSecretRef: &v1.LocalObjectReference{
+							Name: secret.Name,
+						},
+					},
+				},
+			}
+
+			err = k8sClient.Create(ctx, function)
+			Expect(err).NotTo(HaveOccurred())
+			utils.DeferCleanupOnSuccess(func() {
+				_, _ = utils.RunCmd("kubectl", "delete", "function", function.Name, "--namespace", function.Namespace)
+			})
+
+			functionName = function.Name
+
+			Eventually(functionBecomesReady(functionName, functionNamespace)).Should(Succeed())
+
+			sa := &v1.ServiceAccount{}
+			err = k8sClient.Get(ctx, types.NamespacedName{
+				Name:      "default",
+				Namespace: functionNamespace,
+			}, sa)
+			Expect(err).NotTo(HaveOccurred())
+
+			Expect(sa.ImagePullSecrets).To(ContainElement(v1.LocalObjectReference{
+				Name: secret.Name,
+			}))
+		})
+	})
 	Context("with a private SSH repository", func() {
 		var sshRepoURL string
 		var repoDir string
