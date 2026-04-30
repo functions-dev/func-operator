@@ -30,6 +30,12 @@ const namespace = "func-operator-system"
 // serviceAccountName created for the project
 const serviceAccountName = "func-operator-controller-manager"
 
+const (
+	deployerKeda      = "keda"
+	deployerRaw       = "raw"
+	oldFuncCLIVersion = "v1.20.2"
+)
+
 // logFailedTestDetails logs function resource and controller logs on test failure
 func logFailedTestDetails(functionName, functionNamespace string) {
 	specReport := CurrentSpecReport()

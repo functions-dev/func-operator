@@ -44,8 +44,9 @@ var _ = Describe("Middleware Update", func() {
 		var repoDir string
 		var functionName, functionNamespace string
 
-		BeforeEach(func() {
-			if os.Getenv("DEFAULT_DEPLOYER") == "keda" || os.Getenv("DEFAULT_DEPLOYER") == "raw" {
+		BeforeEach(func() { //nolint:dupl
+			if os.Getenv("DEFAULT_DEPLOYER") == deployerKeda ||
+				os.Getenv("DEFAULT_DEPLOYER") == deployerRaw {
 				Skip("Skipping middleware test for Keda & raw deployer, " +
 					"as those are not supported on used CLI version (1.20.x) of this tests")
 			}
@@ -67,7 +68,7 @@ var _ = Describe("Middleware Update", func() {
 
 			// Initialize repository with function code using OLD func CLI version
 			// v1.20.2 has no middleware-version label and uses instance-compatible templates
-			oldFuncVersion := "v1.20.2"
+			oldFuncVersion := oldFuncCLIVersion
 			repoDir, err = utils.InitializeRepoWithFunction(
 				repoURL,
 				username,
@@ -253,7 +254,8 @@ var _ = Describe("Middleware Update", func() {
 		var originalConfigMapData map[string]string
 
 		BeforeEach(func() {
-			if os.Getenv("DEFAULT_DEPLOYER") == "keda" || os.Getenv("DEFAULT_DEPLOYER") == "raw" {
+			if os.Getenv("DEFAULT_DEPLOYER") == deployerKeda ||
+				os.Getenv("DEFAULT_DEPLOYER") == deployerRaw {
 				Skip("Skipping middleware test for Keda & raw deployer, " +
 					"as those are not supported on used CLI version (1.20.x) of this tests")
 			}
@@ -302,7 +304,7 @@ var _ = Describe("Middleware Update", func() {
 
 			// Initialize repository with function code using OLD func CLI version
 			// to ensure middleware will be outdated
-			oldFuncVersion := "v1.20.2"
+			oldFuncVersion := oldFuncCLIVersion
 			repoDir, err = utils.InitializeRepoWithFunction(
 				repoURL,
 				username,

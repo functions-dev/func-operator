@@ -664,8 +664,9 @@ var _ = Describe("Operator", func() {
 		var repoDir string
 		var functionName, functionNamespace string
 
-		BeforeEach(func() {
-			if os.Getenv("DEFAULT_DEPLOYER") == "keda" || os.Getenv("DEFAULT_DEPLOYER") == "raw" {
+		BeforeEach(func() { //nolint:dupl
+			if os.Getenv("DEFAULT_DEPLOYER") == deployerKeda ||
+				os.Getenv("DEFAULT_DEPLOYER") == deployerRaw {
 				Skip("Skipping registry auth test for Keda & raw deployer, " +
 					"as those are not supported on used CLI version (1.20.x) of this tests")
 			}
@@ -684,7 +685,7 @@ var _ = Describe("Operator", func() {
 			Expect(err).NotTo(HaveOccurred())
 			utils.DeferCleanupOnSuccess(cleanupNamespaces, functionNamespace)
 
-			oldFuncVersion := "v1.20.2"
+			oldFuncVersion := oldFuncCLIVersion
 			repoDir, err = utils.InitializeRepoWithFunction(
 				repoURL,
 				username,
