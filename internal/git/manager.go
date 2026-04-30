@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"github.com/functions-dev/func-operator/internal/monitoring"
 	"github.com/go-git/go-git/v6"
@@ -11,7 +12,7 @@ import (
 	"github.com/go-git/go-git/v6/plumbing/client"
 	"github.com/go-git/go-git/v6/plumbing/transport"
 	"github.com/go-git/go-git/v6/plumbing/transport/http"
-	"github.com/go-git/go-git/v6/plumbing/transport/ssh/knownhosts"
+	gitssh "github.com/go-git/go-git/v6/plumbing/transport/ssh"
 	"github.com/prometheus/client_golang/prometheus"
 	gossh "golang.org/x/crypto/ssh"
 )
@@ -27,6 +28,12 @@ type Manager interface {
 func NewManager() (Manager, error) {
 	if err := os.MkdirAll(cloneBaseDir, 0755); err != nil {
 		return nil, fmt.Errorf("failed to create git clone base directory: %w", err)
+	}
+	// go-git's SSH transport requires a known_hosts file for host key algorithm
+	// discovery, even when HostKeyCallback is already set. Without this file,
+	// SSH connections fail in containers that lack ~/.ssh/known_hosts.
+	if err := ensureKnownHostsExists(); err != nil {
+		return nil, fmt.Errorf("failed to ensure known_hosts exists: %w", err)
 	}
 	return &managerImpl{}, nil
 }
@@ -102,54 +109,39 @@ func (m *managerImpl) getHTTPClientOptions(authSecret map[string][]byte) []clien
 	return nil
 }
 
-// sshAuthFunc implements client.SSHAuth by building gossh.ClientConfig directly.
-// We cannot use go-git's built-in SSH auth types (ssh.PublicKeys, ssh.Password)
-// because go-git's SSH transport tries to load known_hosts files to populate
-// HostKeyAlgorithms even when HostKeyCallback is already set (ssh.go:86-92).
-// In containers without ~/.ssh/known_hosts, this causes a hard error. Building
-// the ClientConfig ourselves with both HostKeyCallback and HostKeyAlgorithms
-// set avoids this code path entirely.
-type sshAuthFunc func(context.Context, *transport.Request) (*gossh.ClientConfig, error)
-
-func (f sshAuthFunc) ClientConfig(ctx context.Context, req *transport.Request) (*gossh.ClientConfig, error) {
-	return f(ctx, req)
-}
-
-// defaultHostKeyAlgorithms must be non-empty to prevent go-git's SSH transport
-// from falling back to loading known_hosts files for algorithm discovery.
-var defaultHostKeyAlgorithms = []string{
-	gossh.KeyAlgoED25519,
-	gossh.KeyAlgoECDSA256, gossh.KeyAlgoECDSA384, gossh.KeyAlgoECDSA521,
-	gossh.KeyAlgoRSASHA512, gossh.KeyAlgoRSASHA256, gossh.KeyAlgoRSA,
+func ensureKnownHostsExists() error {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return err
+	}
+	sshDir := filepath.Join(home, ".ssh")
+	if err := os.MkdirAll(sshDir, 0700); err != nil {
+		return err
+	}
+	knownHostsPath := filepath.Join(sshDir, "known_hosts")
+	if _, err := os.Stat(knownHostsPath); os.IsNotExist(err) {
+		return os.WriteFile(knownHostsPath, nil, 0644)
+	}
+	return nil
 }
 
 func (m *managerImpl) getSSHClientOptions(authSecret map[string][]byte) []client.Option {
 	privateKey, hasKey := authSecret["sshPrivateKey"]
 	if !hasKey {
 		return []client.Option{
-			client.WithSSHAuth(sshAuthFunc(func(_ context.Context, _ *transport.Request) (*gossh.ClientConfig, error) {
-				return &gossh.ClientConfig{
-					User:              "git",
-					HostKeyCallback:   gossh.InsecureIgnoreHostKey(),
-					HostKeyAlgorithms: defaultHostKeyAlgorithms,
-				}, nil
-			})),
+			client.WithSSHAuth(&gitssh.Password{
+				User:                  "git",
+				HostKeyCallbackHelper: gitssh.HostKeyCallbackHelper{HostKeyCallback: gossh.InsecureIgnoreHostKey()},
+			}),
 		}
 	}
 
 	password := string(authSecret["sshPrivateKeyPassword"])
-	signer, err := gossh.ParsePrivateKey(privateKey)
+	auth, err := gitssh.NewPublicKeys("git", privateKey, password)
 	if err != nil {
-		if _, ok := err.(*gossh.PassphraseMissingError); ok {
-			signer, err = gossh.ParsePrivateKeyWithPassphrase(privateKey, []byte(password))
-		}
-		if err != nil {
-			return nil
-		}
+		return nil
 	}
-
-	hostKeyCallback := gossh.InsecureIgnoreHostKey()
-	hostKeyAlgorithms := defaultHostKeyAlgorithms
+	auth.HostKeyCallback = gossh.InsecureIgnoreHostKey()
 
 	if knownHostsData, ok := authSecret["known_hosts"]; ok {
 		tmpFile, err := os.CreateTemp("", "known_hosts-*")
@@ -157,23 +149,13 @@ func (m *managerImpl) getSSHClientOptions(authSecret map[string][]byte) []client
 			defer os.Remove(tmpFile.Name())
 			if _, err := tmpFile.Write(knownHostsData); err == nil {
 				_ = tmpFile.Close()
-				db, err := knownhosts.NewDB(tmpFile.Name())
+				cb, err := gitssh.NewKnownHostsCallback(tmpFile.Name())
 				if err == nil {
-					hostKeyCallback = db.HostKeyCallback()
-					hostKeyAlgorithms = nil
+					auth.HostKeyCallback = cb
 				}
 			}
 		}
 	}
 
-	return []client.Option{
-		client.WithSSHAuth(sshAuthFunc(func(_ context.Context, _ *transport.Request) (*gossh.ClientConfig, error) {
-			return &gossh.ClientConfig{
-				User:              "git",
-				Auth:              []gossh.AuthMethod{gossh.PublicKeys(signer)},
-				HostKeyCallback:   hostKeyCallback,
-				HostKeyAlgorithms: hostKeyAlgorithms,
-			}, nil
-		})),
-	}
+	return []client.Option{client.WithSSHAuth(auth)}
 }
