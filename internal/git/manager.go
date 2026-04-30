@@ -102,13 +102,21 @@ func (m *managerImpl) getHTTPClientOptions(authSecret map[string][]byte) []clien
 	return nil
 }
 
-// sshAuthFunc is a function type that implements client.SSHAuth.
+// sshAuthFunc implements client.SSHAuth by building gossh.ClientConfig directly.
+// We cannot use go-git's built-in SSH auth types (ssh.PublicKeys, ssh.Password)
+// because go-git's SSH transport tries to load known_hosts files to populate
+// HostKeyAlgorithms even when HostKeyCallback is already set (ssh.go:86-92).
+// In containers without ~/.ssh/known_hosts, this causes a hard error. Building
+// the ClientConfig ourselves with both HostKeyCallback and HostKeyAlgorithms
+// set avoids this code path entirely.
 type sshAuthFunc func(context.Context, *transport.Request) (*gossh.ClientConfig, error)
 
 func (f sshAuthFunc) ClientConfig(ctx context.Context, req *transport.Request) (*gossh.ClientConfig, error) {
 	return f(ctx, req)
 }
 
+// defaultHostKeyAlgorithms must be non-empty to prevent go-git's SSH transport
+// from falling back to loading known_hosts files for algorithm discovery.
 var defaultHostKeyAlgorithms = []string{
 	gossh.KeyAlgoED25519,
 	gossh.KeyAlgoECDSA256, gossh.KeyAlgoECDSA384, gossh.KeyAlgoECDSA521,
