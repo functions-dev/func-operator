@@ -860,20 +860,21 @@ var _ = Describe("Operator", func() {
 
 			Eventually(functionBecomesReady(functionName, functionNamespace)).Should(Succeed())
 
-			// Verify the Knative Service has imagePullSecrets set on its pod template
-			cmd := exec.Command("kubectl", "get", "ksvc", deployedFunctionName,
-				"-n", functionNamespace,
-				"-o", "jsonpath={.spec.template.spec.imagePullSecrets}")
-			out, err := utils.Run(cmd)
-			Expect(err).NotTo(HaveOccurred())
+			// Verify the Knative Service has imagePullSecrets set on its pod template.
+			Eventually(func(g Gomega) {
+				cmd := exec.Command("kubectl", "get", "ksvc", deployedFunctionName,
+					"-n", functionNamespace,
+					"-o", "jsonpath={.spec.template.spec.imagePullSecrets}")
+				out, err := utils.Run(cmd)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(out).NotTo(BeEmpty(), "imagePullSecrets not set on Knative Service %s", deployedFunctionName)
 
-			var pullSecrets []v1.LocalObjectReference
-			err = json.Unmarshal([]byte(out), &pullSecrets)
-			Expect(err).NotTo(HaveOccurred())
-
-			Expect(pullSecrets).To(ContainElement(v1.LocalObjectReference{
-				Name: secret.Name,
-			}))
+				var pullSecrets []v1.LocalObjectReference
+				g.Expect(json.Unmarshal([]byte(out), &pullSecrets)).To(Succeed())
+				g.Expect(pullSecrets).To(ContainElement(v1.LocalObjectReference{
+					Name: secret.Name,
+				}))
+			}, 2*time.Minute).Should(Succeed())
 		})
 	})
 })
