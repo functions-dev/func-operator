@@ -187,9 +187,14 @@ func ensureFuncVersion(version string) (string, error) {
 	versionDir := filepath.Join(projectDir, "bin", "func-cli", version)
 	funcBinary := filepath.Join(versionDir, "func")
 
-	// Check if already cached
-	if _, err := os.Stat(funcBinary); err == nil {
-		return funcBinary, nil
+	// Check if already cached and executable
+	if info, err := os.Stat(funcBinary); err == nil {
+		isExecutable := info.Mode().Perm()&0o111 != 0
+		if isExecutable {
+			return funcBinary, nil
+		}
+		// Binary exists but is not executable — remove and re-download
+		os.Remove(funcBinary)
 	}
 
 	// Download the version
