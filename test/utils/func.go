@@ -217,7 +217,7 @@ func ensureFuncVersion(version string) (string, error) {
 	}
 
 	// Download the version
-	if err := downloadFuncVersion(version, versionDir, funcBinary); err != nil {
+	if err := downloadFuncVersion(version, funcBinary); err != nil {
 		return "", err
 	}
 
@@ -227,7 +227,7 @@ func ensureFuncVersion(version string) (string, error) {
 // downloadFuncVersion downloads the specified func version from GitHub releases.
 // It writes to a temporary file first and atomically renames it to avoid exposing
 // a partially-written binary to other processes.
-func downloadFuncVersion(version, versionDir, funcBinary string) error {
+func downloadFuncVersion(version, funcBinary string) error {
 	asset := funccli.AssetName()
 	base := "https://github.com/knative/func/releases/download/knative-" + version
 	binaryURL := base + "/" + asset
