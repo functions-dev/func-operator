@@ -20,16 +20,19 @@ JtdGRlLmNzYgECAw==
 func TestGetClientOptions_HTTPToken(t *testing.T) {
 	m := &managerImpl{}
 	secret := map[string][]byte{"token": []byte("my-token")}
-	opts := m.getClientOptions("https", secret)
+	opts, tmpFile := m.getClientOptions("https", secret)
 	if len(opts) != 1 {
 		t.Fatalf("expected 1 option, got %d", len(opts))
+	}
+	if tmpFile != "" {
+		t.Fatalf("expected no temp file, got %s", tmpFile)
 	}
 }
 
 func TestGetClientOptions_HTTPUsernamePassword(t *testing.T) {
 	m := &managerImpl{}
 	secret := map[string][]byte{"username": []byte("user"), "password": []byte("pass")}
-	opts := m.getClientOptions("http", secret)
+	opts, _ := m.getClientOptions("http", secret)
 	if len(opts) != 1 {
 		t.Fatalf("expected 1 option, got %d", len(opts))
 	}
@@ -37,7 +40,7 @@ func TestGetClientOptions_HTTPUsernamePassword(t *testing.T) {
 
 func TestGetClientOptions_HTTPEmpty(t *testing.T) {
 	m := &managerImpl{}
-	opts := m.getClientOptions("https", nil)
+	opts, _ := m.getClientOptions("https", nil)
 	if opts != nil {
 		t.Fatalf("expected nil options, got %v", opts)
 	}
@@ -45,7 +48,7 @@ func TestGetClientOptions_HTTPEmpty(t *testing.T) {
 
 func TestGetClientOptions_SSHNoSecret(t *testing.T) {
 	m := &managerImpl{}
-	opts := m.getClientOptions(sshScheme, nil)
+	opts, _ := m.getClientOptions(sshScheme, nil)
 	if len(opts) != 1 {
 		t.Fatalf("expected 1 option for insecure SSH, got %d", len(opts))
 	}
@@ -53,7 +56,7 @@ func TestGetClientOptions_SSHNoSecret(t *testing.T) {
 
 func TestGetClientOptions_SSHEmptySecret(t *testing.T) {
 	m := &managerImpl{}
-	opts := m.getClientOptions(sshScheme, map[string][]byte{})
+	opts, _ := m.getClientOptions(sshScheme, map[string][]byte{})
 	if len(opts) != 1 {
 		t.Fatalf("expected 1 option for insecure SSH, got %d", len(opts))
 	}
@@ -62,7 +65,7 @@ func TestGetClientOptions_SSHEmptySecret(t *testing.T) {
 func TestGetClientOptions_SSHWithPrivateKey(t *testing.T) {
 	m := &managerImpl{}
 	secret := map[string][]byte{"sshPrivateKey": []byte(testEd25519PrivateKey)}
-	opts := m.getClientOptions(sshScheme, secret)
+	opts, _ := m.getClientOptions(sshScheme, secret)
 	if len(opts) != 1 {
 		t.Fatalf("expected 1 option, got %d", len(opts))
 	}
@@ -71,7 +74,7 @@ func TestGetClientOptions_SSHWithPrivateKey(t *testing.T) {
 func TestGetClientOptions_SSHWithInvalidKey(t *testing.T) {
 	m := &managerImpl{}
 	secret := map[string][]byte{"sshPrivateKey": []byte("not-a-valid-key")}
-	opts := m.getClientOptions(sshScheme, secret)
+	opts, _ := m.getClientOptions(sshScheme, secret)
 	if opts != nil {
 		t.Fatalf("expected nil options for invalid key, got %v", opts)
 	}
