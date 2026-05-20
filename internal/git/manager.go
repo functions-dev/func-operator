@@ -172,6 +172,7 @@ func (m *managerImpl) getSSHClientOptions(ctx context.Context, authSecret map[st
 		}
 	} else {
 		logger.Info("SSH host key verification is disabled, provide known_hosts in auth secret to enable verification")
+		auth.HostKeyCallback = gossh.InsecureIgnoreHostKey()
 	}
 
 	return []client.Option{client.WithSSHAuth(auth)}, tempFilePath, nil
