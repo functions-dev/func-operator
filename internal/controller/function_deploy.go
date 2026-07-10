@@ -32,15 +32,27 @@ import (
 func (r *FunctionReconciler) deploy(ctx context.Context, function *v1alpha1.Function, repo *git.Repository) error {
 	logger := log.FromContext(ctx)
 
+	// Clone on demand when the repo was not provided (clone was skipped during prepareSource)
+	if repo == nil {
+		logger.Info("Cloning repository for deploy (was skipped during source check)")
+		authData, err := r.getGitAuthData(ctx, function)
+		if err != nil {
+			return fmt.Errorf("failed to get git auth for deploy: %w", err)
+		}
+		repo, err = r.GitManager.CloneRepository(ctx, function.Spec.Repository.URL, function.Spec.Repository.Path, function.Spec.Repository.Branch, authData)
+		if err != nil {
+			return fmt.Errorf("failed to clone repository for deploy: %w", err)
+		}
+		defer repo.Cleanup()
+	}
+
 	if err := r.setupPipelineRBAC(ctx, function); err != nil {
 		return fmt.Errorf("failed to setup pipeline RBAC: %w", err)
 	}
 
-	// deploy function
 	deployOptions := funccli.DeployOptions{}
 
 	if function.Spec.Registry.AuthSecretRef != nil && function.Spec.Registry.AuthSecretRef.Name != "" {
-		// we have a registry auth secret referenced -> use this for func deploy
 		authFile, err := r.persistRegistryAuthSecret(ctx, function)
 		if err != nil {
 			return fmt.Errorf("failed to persist registry auth secret temporarily: %w", err)

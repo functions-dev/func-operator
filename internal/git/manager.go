@@ -8,11 +8,13 @@ import (
 
 	"github.com/functions-dev/func-operator/internal/monitoring"
 	"github.com/go-git/go-git/v6"
+	"github.com/go-git/go-git/v6/config"
 	"github.com/go-git/go-git/v6/plumbing"
 	"github.com/go-git/go-git/v6/plumbing/client"
 	"github.com/go-git/go-git/v6/plumbing/transport"
 	"github.com/go-git/go-git/v6/plumbing/transport/http"
 	gitssh "github.com/go-git/go-git/v6/plumbing/transport/ssh"
+	"github.com/go-git/go-git/v6/storage/memory"
 	"github.com/prometheus/client_golang/prometheus"
 	gossh "golang.org/x/crypto/ssh"
 	"sigs.k8s.io/controller-runtime/pkg/log"
@@ -24,6 +26,7 @@ const (
 
 type Manager interface {
 	CloneRepository(ctx context.Context, url, subPath, reference string, auth map[string][]byte) (*Repository, error)
+	LsRemote(ctx context.Context, url, reference string, auth map[string][]byte) (string, error)
 }
 
 func NewManager() (Manager, error) {
@@ -88,6 +91,45 @@ func (m *managerImpl) CloneRepository(ctx context.Context, repoUrl, subPath, ref
 		Branch:        reference,
 		knownHostFile: tempFile,
 	}, nil
+}
+
+func (m *managerImpl) LsRemote(ctx context.Context, url, reference string, auth map[string][]byte) (string, error) {
+	timer := prometheus.NewTimer(monitoring.GitLsRemoteDuration)
+	defer timer.ObserveDuration()
+
+	parsedURL, err := transport.ParseURL(url)
+	if err != nil {
+		return "", fmt.Errorf("failed to parse repository URL: %w", err)
+	}
+
+	clientOpts, tempFile, err := m.getClientOptions(ctx, parsedURL.Scheme, auth)
+	if err != nil {
+		return "", fmt.Errorf("failed to configure auth: %w", err)
+	}
+	if tempFile != "" {
+		defer os.Remove(tempFile)
+	}
+
+	remote := git.NewRemote(memory.NewStorage(), &config.RemoteConfig{
+		Name: "origin",
+		URLs: []string{url},
+	})
+
+	refs, err := remote.ListContext(ctx, &git.ListOptions{
+		ClientOptions: clientOpts,
+	})
+	if err != nil {
+		return "", fmt.Errorf("failed to list remote references: %w", err)
+	}
+
+	refName := plumbing.ReferenceName(reference)
+	for _, ref := range refs {
+		if ref.Name() == refName {
+			return ref.Hash().String(), nil
+		}
+	}
+
+	return "", fmt.Errorf("reference %q not found in remote", reference)
 }
 
 func (m *managerImpl) getClientOptions(ctx context.Context, scheme string, authSecret map[string][]byte) ([]client.Option, string, error) {

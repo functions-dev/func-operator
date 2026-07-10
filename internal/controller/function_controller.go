@@ -132,7 +132,9 @@ func (r *FunctionReconciler) reconcile(ctx context.Context, function *v1alpha1.F
 	if err != nil {
 		return fmt.Errorf("prepare source failed: %w", err)
 	}
-	defer repo.Cleanup()
+	if repo != nil {
+		defer repo.Cleanup()
+	}
 
 	function.Status.Name = metadata.Name
 
@@ -183,17 +185,46 @@ func (r *FunctionReconciler) removeFuncAnnotations(ctx context.Context, function
 	})
 }
 
-// prepareSource clones the git repository and retrieves function metadata
-func (r *FunctionReconciler) prepareSource(ctx context.Context, function *v1alpha1.Function) (*git.Repository, *funcfn.Function, error) {
+func (r *FunctionReconciler) getGitAuthData(ctx context.Context, function *v1alpha1.Function) (map[string][]byte, error) {
+	if function.Spec.Repository.AuthSecretRef == nil {
+		return nil, nil
+	}
 	gitAuthSecret := v1.Secret{}
-	if function.Spec.Repository.AuthSecretRef != nil {
-		if err := r.Get(ctx, types.NamespacedName{Namespace: function.Namespace, Name: function.Spec.Repository.AuthSecretRef.Name}, &gitAuthSecret); err != nil {
-			function.MarkSourceNotReady("AuthSecretNotFound", "Auth secret not found: %s", err.Error())
-			return nil, nil, err
+	if err := r.Get(ctx, types.NamespacedName{Namespace: function.Namespace, Name: function.Spec.Repository.AuthSecretRef.Name}, &gitAuthSecret); err != nil {
+		return nil, err
+	}
+	return gitAuthSecret.Data, nil
+}
+
+// prepareSource checks if the git source has changed and clones the repository only when necessary.
+// Returns a nil repo when the source commit is unchanged (metadata is reconstructed from status).
+func (r *FunctionReconciler) prepareSource(ctx context.Context, function *v1alpha1.Function) (*git.Repository, *funcfn.Function, error) {
+	logger := log.FromContext(ctx)
+
+	authData, err := r.getGitAuthData(ctx, function)
+	if err != nil {
+		function.MarkSourceNotReady("AuthSecretNotFound", "Auth secret not found: %s", err.Error())
+		return nil, nil, err
+	}
+
+	if function.Status.Git.ObservedCommit != "" && function.Status.Name != "" {
+		headCommit, err := r.GitManager.LsRemote(ctx, function.Spec.Repository.URL, function.Spec.Repository.Branch, authData)
+		if err != nil {
+			logger.Info("ls-remote failed, falling back to full clone", "error", err)
+		} else if headCommit == function.Status.Git.ObservedCommit {
+			logger.Info("Source commit unchanged, skipping clone", "commit", headCommit)
+			function.MarkSourceReady()
+			function.Status.Git.LastChecked = metav1.Now()
+			metadata := funcfn.Function{
+				Name:    function.Status.Name,
+				Runtime: function.Status.Deployment.Runtime,
+				Deploy:  funcfn.DeploySpec{Deployer: function.Status.Deployment.Deployer},
+			}
+			return nil, &metadata, nil
 		}
 	}
 
-	repo, err := r.GitManager.CloneRepository(ctx, function.Spec.Repository.URL, function.Spec.Repository.Path, function.Spec.Repository.Branch, gitAuthSecret.Data)
+	repo, err := r.GitManager.CloneRepository(ctx, function.Spec.Repository.URL, function.Spec.Repository.Path, function.Spec.Repository.Branch, authData)
 	if err != nil {
 		function.MarkSourceNotReady("GitCloneFailed", "Failed to clone repository: %s", err.Error())
 		return nil, nil, fmt.Errorf("failed to setup git repository: %w", err)
@@ -205,7 +236,6 @@ func (r *FunctionReconciler) prepareSource(ctx context.Context, function *v1alph
 		return nil, nil, fmt.Errorf("failed to get function metadata: %w", err)
 	}
 
-	// Source is ready - git clone and metadata read succeeded
 	function.MarkSourceReady()
 
 	function.Status.Git.ResolvedBranch = repo.Branch

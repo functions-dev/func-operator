@@ -531,6 +531,196 @@ var _ = Describe("Function Controller", func() {
 			}),
 		)
 
+		It("should skip clone when source commit is unchanged", func() {
+			By("creating the Function")
+			Expect(createFunctionResource(resourceName, resourceNamespace, defaultSpec)).To(Succeed())
+
+			By("Prepopulating status to simulate a previous reconcile")
+			f := &functionsdevv1alpha1.Function{}
+			Expect(k8sClient.Get(ctx, typeNamespacedName, f)).To(Succeed())
+			f.Status.Name = functionName
+			f.Status.Git.ObservedCommit = "abc123"
+			f.Status.Git.ResolvedBranch = "my-branch"
+			f.Status.Deployment.Runtime = "go"
+			f.Status.Deployment.Deployer = "knative"
+			Expect(k8sClient.Status().Update(ctx, f)).To(Succeed())
+
+			By("Setting up mocks")
+			funcCliManagerMock := funccli.NewMockManager(GinkgoT())
+			gitManagerMock := git.NewMockManager(GinkgoT())
+
+			gitManagerMock.EXPECT().LsRemote(mock.Anything, "https://github.com/foo/bar", "my-branch", mock.Anything).Return("abc123", nil)
+			// CloneRepository should NOT be called
+
+			funcCliManagerMock.EXPECT().Describe(mock.Anything, functionName, resourceNamespace).Return(functions.Instance{
+				Middleware: functions.Middleware{Version: "v1.0.0"},
+				Ready:     "true",
+			}, nil)
+			funcCliManagerMock.EXPECT().GetLatestMiddlewareVersion(mock.Anything, mock.Anything, mock.Anything).Return("v1.0.0", nil)
+
+			operatorNs := fmt.Sprintf("func-operator-%s", rand.String(6))
+			Expect(createNamespace(operatorNs)).To(Succeed())
+			Expect(createControllerConfig(operatorNs, nil)).To(Succeed())
+
+			controllerReconciler := &FunctionReconciler{
+				Client:            k8sClient,
+				Scheme:            k8sClient.Scheme(),
+				Recorder:          &events.FakeRecorder{},
+				FuncCliManager:    funcCliManagerMock,
+				GitManager:        gitManagerMock,
+				OperatorNamespace: operatorNs,
+			}
+
+			_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: typeNamespacedName,
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			gitManagerMock.AssertNotCalled(GinkgoT(), "CloneRepository", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+		})
+
+		It("should clone when source commit has changed", func() {
+			By("creating the Function")
+			Expect(createFunctionResource(resourceName, resourceNamespace, defaultSpec)).To(Succeed())
+
+			By("Prepopulating status to simulate a previous reconcile")
+			f := &functionsdevv1alpha1.Function{}
+			Expect(k8sClient.Get(ctx, typeNamespacedName, f)).To(Succeed())
+			f.Status.Name = functionName
+			f.Status.Git.ObservedCommit = "abc123"
+			f.Status.Git.ResolvedBranch = "my-branch"
+			f.Status.Deployment.Runtime = "go"
+			f.Status.Deployment.Deployer = "knative"
+			Expect(k8sClient.Status().Update(ctx, f)).To(Succeed())
+
+			By("Setting up mocks")
+			funcCliManagerMock := funccli.NewMockManager(GinkgoT())
+			gitManagerMock := git.NewMockManager(GinkgoT())
+
+			gitManagerMock.EXPECT().LsRemote(mock.Anything, "https://github.com/foo/bar", "my-branch", mock.Anything).Return("def456", nil)
+			gitManagerMock.EXPECT().CloneRepository(mock.Anything, "https://github.com/foo/bar", "", "my-branch", mock.Anything).Return(
+				createTmpGitRepo(functions.Function{Name: "func-go"}, WithRepoOptionCommit("def456"), WithRepoOptionBranch("my-branch")), nil)
+
+			funcCliManagerMock.EXPECT().Describe(mock.Anything, functionName, resourceNamespace).Return(functions.Instance{
+				Middleware: functions.Middleware{Version: "v1.0.0"},
+				Ready:     "true",
+			}, nil)
+			funcCliManagerMock.EXPECT().GetLatestMiddlewareVersion(mock.Anything, mock.Anything, mock.Anything).Return("v1.0.0", nil)
+
+			operatorNs := fmt.Sprintf("func-operator-%s", rand.String(6))
+			Expect(createNamespace(operatorNs)).To(Succeed())
+			Expect(createControllerConfig(operatorNs, nil)).To(Succeed())
+
+			controllerReconciler := &FunctionReconciler{
+				Client:            k8sClient,
+				Scheme:            k8sClient.Scheme(),
+				Recorder:          &events.FakeRecorder{},
+				FuncCliManager:    funcCliManagerMock,
+				GitManager:        gitManagerMock,
+				OperatorNamespace: operatorNs,
+			}
+
+			_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: typeNamespacedName,
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			By("Verifying the new commit was recorded in status")
+			Expect(k8sClient.Get(ctx, typeNamespacedName, f)).To(Succeed())
+			Expect(f.Status.Git.ObservedCommit).To(Equal("def456"))
+		})
+
+		It("should fall back to clone when ls-remote fails", func() {
+			By("creating the Function")
+			Expect(createFunctionResource(resourceName, resourceNamespace, defaultSpec)).To(Succeed())
+
+			By("Prepopulating status to simulate a previous reconcile")
+			f := &functionsdevv1alpha1.Function{}
+			Expect(k8sClient.Get(ctx, typeNamespacedName, f)).To(Succeed())
+			f.Status.Name = functionName
+			f.Status.Git.ObservedCommit = "abc123"
+			f.Status.Git.ResolvedBranch = "my-branch"
+			Expect(k8sClient.Status().Update(ctx, f)).To(Succeed())
+
+			By("Setting up mocks")
+			funcCliManagerMock := funccli.NewMockManager(GinkgoT())
+			gitManagerMock := git.NewMockManager(GinkgoT())
+
+			gitManagerMock.EXPECT().LsRemote(mock.Anything, "https://github.com/foo/bar", "my-branch", mock.Anything).Return("", fmt.Errorf("network error"))
+			gitManagerMock.EXPECT().CloneRepository(mock.Anything, "https://github.com/foo/bar", "", "my-branch", mock.Anything).Return(createTmpGitRepo(functions.Function{Name: "func-go"}), nil)
+
+			funcCliManagerMock.EXPECT().Describe(mock.Anything, functionName, resourceNamespace).Return(functions.Instance{
+				Middleware: functions.Middleware{Version: "v1.0.0"},
+				Ready:     "true",
+			}, nil)
+			funcCliManagerMock.EXPECT().GetLatestMiddlewareVersion(mock.Anything, mock.Anything, mock.Anything).Return("v1.0.0", nil)
+
+			operatorNs := fmt.Sprintf("func-operator-%s", rand.String(6))
+			Expect(createNamespace(operatorNs)).To(Succeed())
+			Expect(createControllerConfig(operatorNs, nil)).To(Succeed())
+
+			controllerReconciler := &FunctionReconciler{
+				Client:            k8sClient,
+				Scheme:            k8sClient.Scheme(),
+				Recorder:          &events.FakeRecorder{},
+				FuncCliManager:    funcCliManagerMock,
+				GitManager:        gitManagerMock,
+				OperatorNamespace: operatorNs,
+			}
+
+			_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: typeNamespacedName,
+			})
+			Expect(err).NotTo(HaveOccurred())
+		})
+
+		It("should clone on demand when deploy is needed but clone was skipped", func() {
+			By("creating the Function")
+			Expect(createFunctionResource(resourceName, resourceNamespace, defaultSpec)).To(Succeed())
+
+			By("Prepopulating status to simulate a previous reconcile")
+			f := &functionsdevv1alpha1.Function{}
+			Expect(k8sClient.Get(ctx, typeNamespacedName, f)).To(Succeed())
+			f.Status.Name = functionName
+			f.Status.Git.ObservedCommit = "abc123"
+			f.Status.Git.ResolvedBranch = "my-branch"
+			f.Status.Deployment.Runtime = "go"
+			f.Status.Deployment.Deployer = "knative"
+			Expect(k8sClient.Status().Update(ctx, f)).To(Succeed())
+
+			By("Setting up mocks")
+			funcCliManagerMock := funccli.NewMockManager(GinkgoT())
+			gitManagerMock := git.NewMockManager(GinkgoT())
+
+			gitManagerMock.EXPECT().LsRemote(mock.Anything, "https://github.com/foo/bar", "my-branch", mock.Anything).Return("abc123", nil)
+			// Clone is called on demand during deploy (not during prepareSource)
+			gitManagerMock.EXPECT().CloneRepository(mock.Anything, "https://github.com/foo/bar", "", "my-branch", mock.Anything).Return(createTmpGitRepo(functions.Function{Name: "func-go"}), nil)
+
+			funcCliManagerMock.EXPECT().Describe(mock.Anything, functionName, resourceNamespace).Return(functions.Instance{
+				Middleware: functions.Middleware{Version: "v1.0.0"},
+			}, nil)
+			funcCliManagerMock.EXPECT().GetLatestMiddlewareVersion(mock.Anything, mock.Anything, mock.Anything).Return("v2.0.0", nil)
+			funcCliManagerMock.EXPECT().Deploy(mock.Anything, mock.Anything, resourceNamespace, funccli.DeployOptions{}).Return(nil)
+
+			operatorNs := fmt.Sprintf("func-operator-%s", rand.String(6))
+			Expect(createNamespace(operatorNs)).To(Succeed())
+			Expect(createControllerConfig(operatorNs, nil)).To(Succeed())
+
+			controllerReconciler := &FunctionReconciler{
+				Client:            k8sClient,
+				Scheme:            k8sClient.Scheme(),
+				Recorder:          &events.FakeRecorder{},
+				FuncCliManager:    funcCliManagerMock,
+				GitManager:        gitManagerMock,
+				OperatorNamespace: operatorNs,
+			}
+
+			_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: typeNamespacedName,
+			})
+			Expect(err).NotTo(HaveOccurred())
+		})
+
 		It("should pass ImagePullSecret to deploy when registry authSecretRef is set", func() {
 			registrySecretName := "my-registry-secret"
 

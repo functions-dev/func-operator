@@ -6,8 +6,9 @@ import (
 )
 
 const (
-	DeployDurationMetricName   = "deploy_duration_seconds"
-	GitCloneDurationMetricName = "git_clone_duration_seconds"
+	DeployDurationMetricName      = "deploy_duration_seconds"
+	GitCloneDurationMetricName    = "git_clone_duration_seconds"
+	GitLsRemoteDurationMetricName = "git_ls_remote_duration_seconds"
 )
 
 var (
@@ -20,11 +21,17 @@ var (
 		Name: GitCloneDurationMetricName,
 		Help: "Time spent running the git clone command",
 	})
+
+	GitLsRemoteDuration = prometheus.NewHistogram(prometheus.HistogramOpts{
+		Name: GitLsRemoteDurationMetricName,
+		Help: "Time spent running the git ls-remote command",
+	})
 )
 
 func RegisterMetrics() {
 	metrics.Registry.MustRegister(
 		DeployDuration,
 		GitCloneDuration,
+		GitLsRemoteDuration,
 	)
 }
