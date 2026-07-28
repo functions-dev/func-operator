@@ -25,7 +25,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	"github.com/functions-dev/func-operator/test/sources/objectbucket-utils"
+	utils "github.com/functions-dev/func-operator/test/sources/objectbucket-utils"
 )
 
 var (
@@ -54,7 +54,8 @@ func TestE2E(t *testing.T) {
 
 var _ = BeforeSuite(func() {
 	By("building the manager(Operator) image")
-	cmd := exec.Command("make", "docker-build-source-objectbucket", fmt.Sprintf("IMG_SOURCE_OBJECTBUCKET=%s", projectImage))
+	cmd := exec.Command("make", "docker-build-source-objectbucket",
+		fmt.Sprintf("IMG_SOURCE_OBJECTBUCKET=%s", projectImage))
 	_, err := utils.Run(cmd)
 	ExpectWithOffset(1, err).NotTo(HaveOccurred(), "Failed to build the manager(Operator) image")
 

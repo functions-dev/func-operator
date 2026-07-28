@@ -27,7 +27,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	"github.com/functions-dev/func-operator/test/sources/objectbucket-utils"
+	utils "github.com/functions-dev/func-operator/test/sources/objectbucket-utils"
 )
 
 // namespace where the project is deployed in
