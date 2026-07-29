@@ -10,8 +10,3 @@ patches:
 - path: manager_metrics_patch.yaml
   target:
     kind: Deployment
-
-images:
-- name: controller
-  newName: localhost:5001/objectbucket-notifications-adapter
-  newTag: latest
