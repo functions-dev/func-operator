@@ -13,5 +13,5 @@ patches:
 
 images:
 - name: controller
-  newName: quay.io/maschmid/objectbucket-notifications-adapter
+  newName: localhost:5001/objectbucket-notifications-adapter
   newTag: latest
