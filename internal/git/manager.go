@@ -140,7 +140,9 @@ func ensureKnownHostsExists() error {
 		if mkErr := os.MkdirAll(sshDir, 0700); mkErr != nil {
 			return fmt.Errorf("failed to create .ssh in temp home: %w", mkErr)
 		}
-		os.Setenv("HOME", tmpHome)
+		if setErr := os.Setenv("HOME", tmpHome); setErr != nil {
+			return fmt.Errorf("failed to set HOME to temp dir: %w", setErr)
+		}
 	}
 	knownHostsPath := filepath.Join(sshDir, "known_hosts")
 	if _, err := os.Stat(knownHostsPath); os.IsNotExist(err) {
