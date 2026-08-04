@@ -4,7 +4,7 @@ go 1.26.0
 
 require (
 	code.gitea.io/sdk/gitea v0.25.1
-	github.com/IBM/sarama v1.50.3
+	github.com/IBM/sarama v1.60.1
 	github.com/aws/aws-sdk-go-v2 v1.43.3
 	github.com/aws/aws-sdk-go-v2/credentials v1.19.24
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.106.3
