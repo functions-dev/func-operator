@@ -6,6 +6,7 @@ import (
 	"regexp"
 	"strings"
 	"sync"
+	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -217,8 +218,7 @@ func (p *Provider) watchConfigMap(ctx context.Context) {
 			select {
 			case <-ctx.Done():
 				return
-			case <-ctrl.SetupSignalHandler().Done():
-				return
+			case <-time.After(5 * time.Second):
 			}
 			continue
 		}
