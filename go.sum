@@ -33,8 +33,8 @@ github.com/aws/aws-sdk-go-v2 v1.43.5 h1:yKT5GYnFWhuDo+DqKvE5ZPwVn3RjC4MAeBtZGlh6
 github.com/aws/aws-sdk-go-v2 v1.43.5/go.mod h1:wZjAJppCntyOGgVSmgVTfDyRJK5PHOasO6Wsy8U7Axk=
 github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream v1.7.17 h1:mn+Vxb9zgz/FE/yDTcFim3DZ1qpcrxR+qBQkBrl6bzA=
 github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream v1.7.17/go.mod h1:eDfmEFxu+BSVsUGLbzJhWjpOurv1mqczClS97yI8wdk=
-github.com/aws/aws-sdk-go-v2/credentials v1.19.34 h1:y6GkSmcv5myd1ngrYbGmiLlwQqB6TQhOuN/tbSSuWDY=
-github.com/aws/aws-sdk-go-v2/credentials v1.19.34/go.mod h1:w3dTcnDVoQIewjo7JG45hduAToikiIFLC4FIO7fndvw=
+github.com/aws/aws-sdk-go-v2/credentials v1.19.35 h1:Cxua2RVdRwL0sfjHM/SnQoOnQ7xKng9m5EQBO8BnZlg=
+github.com/aws/aws-sdk-go-v2/credentials v1.19.35/go.mod h1:9XQ+RSIGPkycr+oCJYnB1uTv5kMVVR+rd2vYK0Hxj2w=
 github.com/aws/aws-sdk-go-v2/internal/configsources v1.4.36 h1:5CrzwxDqf4w3x1Vs3/NiZ0nsC34Hbm3pIDMWbsLebOE=
 github.com/aws/aws-sdk-go-v2/internal/configsources v1.4.36/go.mod h1:A3gHdKZIvG/QXERzZwcxNS3RNDFcRCuhhTFBYp+V/nw=
 github.com/aws/aws-sdk-go-v2/internal/endpoints/v2 v2.7.36 h1:A4N2f4YPcST0v+dWtX+xrpPPCL9VTBhoIFFUWYqbacE=
