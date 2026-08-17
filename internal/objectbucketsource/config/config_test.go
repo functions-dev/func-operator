@@ -113,9 +113,15 @@ func TestKafkaFingerprint_Stability(t *testing.T) {
 		"password": []byte("s3cret"),
 	}
 
-	// Same inputs (regardless of map iteration order) produce the same fingerprint.
-	if kafkaFingerprint("kafka-creds", data) != kafkaFingerprint("kafka-creds", data) {
-		t.Fatal("fingerprint is not stable for identical inputs")
+	// Equal inputs from a separately-constructed map produce the same fingerprint
+	// (independent of map iteration order).
+	same := map[string][]byte{
+		"password": []byte("s3cret"),
+		"protocol": []byte("SASL_SSL"),
+		"user":     []byte("alice"),
+	}
+	if kafkaFingerprint("kafka-creds", data) != kafkaFingerprint("kafka-creds", same) {
+		t.Fatal("fingerprint is not stable for equal inputs")
 	}
 
 	// A changed value produces a different fingerprint (credential rotation).
@@ -133,9 +139,10 @@ func TestKafkaFingerprint_Stability(t *testing.T) {
 		t.Fatal("fingerprint did not change after changing the secret name")
 	}
 
-	// No secret (nil data, empty name) is stable and non-panicking.
-	if kafkaFingerprint("", nil) != kafkaFingerprint("", nil) {
-		t.Fatal("fingerprint is not stable for empty inputs")
+	// No secret (nil data, empty name) is stable and non-panicking, and differs
+	// from any non-empty secret.
+	if kafkaFingerprint("", nil) == kafkaFingerprint("kafka-creds", data) {
+		t.Fatal("empty fingerprint collided with a populated secret")
 	}
 }
 

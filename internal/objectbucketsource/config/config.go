@@ -459,7 +459,7 @@ func (p *Provider) consumeSecretEvents(ctx context.Context, watcher watch.Interf
 					log.Info("configuration reloaded successfully after Secret change")
 				}
 			case watch.Deleted:
-				log.Error(fmt.Errorf("Kafka Secret deleted"), "kafka credentials unavailable", "name", secretName)
+				log.Error(fmt.Errorf("kafka secret deleted"), "kafka credentials unavailable", "name", secretName)
 			}
 		}
 	}
