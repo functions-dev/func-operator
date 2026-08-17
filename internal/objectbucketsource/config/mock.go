@@ -9,10 +9,11 @@ import (
 
 // MockProvider is a simple mock implementation of the config provider for testing
 type MockProvider struct {
-	mu          sync.RWMutex
-	config      Config
-	kafkaConfig *sarama.Config
-	subscribers []chan struct{}
+	mu               sync.RWMutex
+	config           Config
+	kafkaConfig      *sarama.Config
+	kafkaFingerprint string
+	subscribers      []chan struct{}
 }
 
 // NewMockProvider creates a mock provider with default test configuration
@@ -54,6 +55,13 @@ func (m *MockProvider) GetKafkaConfig() *sarama.Config {
 	return m.kafkaConfig
 }
 
+// GetKafkaFingerprint returns the mock Kafka fingerprint
+func (m *MockProvider) GetKafkaFingerprint() string {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.kafkaFingerprint
+}
+
 // Subscribe returns a channel that is signaled whenever the mock configuration changes.
 func (m *MockProvider) Subscribe() <-chan struct{} {
 	ch := make(chan struct{}, 1)
@@ -85,5 +93,13 @@ func (m *MockProvider) SetKafkaConfig(cfg *sarama.Config) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.kafkaConfig = cfg
+	m.notify()
+}
+
+// SetKafkaFingerprint updates the mock Kafka fingerprint (for testing)
+func (m *MockProvider) SetKafkaFingerprint(fingerprint string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.kafkaFingerprint = fingerprint
 	m.notify()
 }

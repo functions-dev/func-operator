@@ -128,15 +128,21 @@ To update the adapter configuration at runtime:
 
 The notification transport settings (`NOTIFICATIONS_MODE`, `KAFKA_BROKERS`,
 `KAFKA_NOTIFICATIONS_TOPICS`, `KAFKA_NOTIFICATIONS_GROUP_ID`) can be changed at runtime
-via the ConfigMap. When any of them change, the adapter:
+via the ConfigMap. The same applies to the Kafka credentials referenced by `KAFKA_SECRET`.
+When any of them change, the adapter:
 
 1. Stops the current notification runner (the HTTP server or the Kafka consumer), waiting
    for it to shut down gracefully.
-2. Starts a new runner using the updated settings.
+2. Starts a new runner using the updated settings/credentials.
 
 This means you can, for example, switch the adapter from `http` to `kafka` mode, point the
-consumer at different brokers, subscribe to different topics, or change the consumer group
-ID — all without restarting the pod.
+consumer at different brokers, subscribe to different topics, change the consumer group ID,
+or rotate the Kafka credentials — all without restarting the pod.
+
+The runner is restarted only when a change actually affects it: changes to unrelated
+ConfigMap keys (e.g. adapter IDs) do not restart it, and a Kafka credential change only
+restarts the runner when Kafka is actually in use (`kafka` mode, or `http` mode with
+`KAFKA_BROKERS` set for `kafka:` sinks).
 
 If a ConfigMap change produces an invalid notification configuration (for example
 `NOTIFICATIONS_MODE=kafka` without `KAFKA_BROKERS`), the reload is rejected: the adapter
@@ -154,13 +160,17 @@ If validation fails, the adapter logs an error and continues using the previous 
 
 ## Kafka Credential Rotation
 
-To rotate Kafka credentials without restarting the adapter:
+To rotate Kafka credentials without restarting the adapter pod:
 
-1. Update the Kafka Secret with new credentials
-2. Update the ConfigMap to reference the new secret (or trigger a reload by adding/removing a comment)
-3. The adapter will reload and use the new credentials for new connections
+1. Update the Kafka Secret with new credentials in place, **or** update the ConfigMap to
+   reference a new secret via `KAFKA_SECRET`.
+2. The adapter watches both the ConfigMap and the referenced Kafka Secret, so it detects the
+   change automatically, rebuilds the Kafka configuration, and — if Kafka is in use —
+   gracefully restarts its Kafka producer/consumer so the new credentials take effect
+   immediately.
 
-Note: Existing Kafka connections will continue using old credentials until they are recreated (on connection failure or pod restart).
+Note: The adapter watches the Secret named by the current `KAFKA_SECRET`. If you point
+`KAFKA_SECRET` at a different Secret, the watcher automatically follows the new reference.
 
 ## Migration from Environment Variables
 

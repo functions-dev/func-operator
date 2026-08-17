@@ -20,6 +20,9 @@ var log = logf.Log.WithName("notification-server")
 type ConfigProvider interface {
 	GetConfig() config.Config
 	GetKafkaConfig() *sarama.Config
+	// GetKafkaFingerprint returns a content hash of the Kafka secret; it changes
+	// whenever the Kafka credentials/connection settings are rotated.
+	GetKafkaFingerprint() string
 	// Subscribe returns a channel that is signaled whenever the configuration is reloaded.
 	Subscribe() <-chan struct{}
 }
@@ -30,10 +33,24 @@ type NotificationServer struct {
 	ConfigProvider ConfigProvider
 }
 
+// runSnapshot captures everything that, when changed, requires the notification
+// runner to be restarted.
+type runSnapshot struct {
+	settings         config.NotificationSettings
+	kafkaFingerprint string
+}
+
+func (s *NotificationServer) snapshot() runSnapshot {
+	return runSnapshot{
+		settings:         s.ConfigProvider.GetConfig().Notifications,
+		kafkaFingerprint: s.ConfigProvider.GetKafkaFingerprint(),
+	}
+}
+
 // Start runs the notification runner (HTTP server or Kafka consumer) according to
 // the current configuration and supervises it: when the notification-related
-// settings change in the ConfigMap, it gracefully stops the current runner and
-// starts a new one with the updated settings.
+// settings or the Kafka credentials change in the ConfigMap/Secret, it gracefully
+// stops the current runner and starts a new one with the updated settings.
 func (s *NotificationServer) Start(ctx context.Context) error {
 	changes := s.ConfigProvider.Subscribe()
 
@@ -42,24 +59,24 @@ func (s *NotificationServer) Start(ctx context.Context) error {
 			return nil
 		}
 
-		settings := s.ConfigProvider.GetConfig().Notifications
-		if shutdown := s.superviseRun(ctx, changes, settings); shutdown {
+		snap := s.snapshot()
+		if shutdown := s.superviseRun(ctx, changes, snap); shutdown {
 			return nil
 		}
 	}
 }
 
-// superviseRun starts the notification runner for the given settings and blocks
+// superviseRun starts the notification runner for the given snapshot and blocks
 // until either the parent context is cancelled (returns true, indicating
-// shutdown) or a restart is required because the settings changed or the runner
-// exited (returns false). It always stops the runner before returning.
-func (s *NotificationServer) superviseRun(ctx context.Context, changes <-chan struct{}, settings config.NotificationSettings) (shutdown bool) {
+// shutdown) or a restart is required because the settings/credentials changed or
+// the runner exited (returns false). It always stops the runner before returning.
+func (s *NotificationServer) superviseRun(ctx context.Context, changes <-chan struct{}, snap runSnapshot) (shutdown bool) {
 	runCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
 	errCh := make(chan error, 1)
 	go func() {
-		errCh <- s.run(runCtx, settings)
+		errCh <- s.run(runCtx, snap.settings)
 	}()
 
 	for {
@@ -83,16 +100,18 @@ func (s *NotificationServer) superviseRun(ctx context.Context, changes <-chan st
 			}
 			return false
 		case <-changes:
-			newSettings := s.ConfigProvider.GetConfig().Notifications
-			if notificationSettingsEqual(settings, newSettings) {
+			newSnap := s.snapshot()
+			if !needsRestart(snap, newSnap) {
 				// Unrelated configuration change (e.g. adapter IDs); keep running.
 				continue
 			}
-			log.Info("notification settings changed, restarting notification runner",
-				"old-mode", settings.Mode, "new-mode", newSettings.Mode,
-				"old-brokers", settings.KafkaBrokers, "new-brokers", newSettings.KafkaBrokers,
-				"old-topics", settings.KafkaNotificationsTopics, "new-topics", newSettings.KafkaNotificationsTopics,
-				"old-group-id", settings.KafkaNotificationsGroupID, "new-group-id", newSettings.KafkaNotificationsGroupID)
+			kafkaCredsChanged := snap.kafkaFingerprint != newSnap.kafkaFingerprint
+			log.Info("notification configuration changed, restarting notification runner",
+				"old-mode", snap.settings.Mode, "new-mode", newSnap.settings.Mode,
+				"old-brokers", snap.settings.KafkaBrokers, "new-brokers", newSnap.settings.KafkaBrokers,
+				"old-topics", snap.settings.KafkaNotificationsTopics, "new-topics", newSnap.settings.KafkaNotificationsTopics,
+				"old-group-id", snap.settings.KafkaNotificationsGroupID, "new-group-id", newSnap.settings.KafkaNotificationsGroupID,
+				"kafka-credentials-changed", kafkaCredsChanged)
 			cancel()
 			<-errCh
 			return false
@@ -189,6 +208,26 @@ func (s *NotificationServer) startKafkaConsumer(ctx context.Context, handler *no
 
 func (s *NotificationServer) NeedLeaderElection() bool {
 	return false
+}
+
+// needsRestart reports whether the change from old to new requires restarting the
+// notification runner. The runner is restarted when the notification transport
+// settings change, or when the Kafka credentials change while Kafka is in use
+// (Kafka mode, or HTTP mode with brokers configured for kafka: sinks).
+func needsRestart(old, new runSnapshot) bool {
+	if !notificationSettingsEqual(old.settings, new.settings) {
+		return true
+	}
+	if usesKafka(new.settings) && old.kafkaFingerprint != new.kafkaFingerprint {
+		return true
+	}
+	return false
+}
+
+// usesKafka reports whether the given settings establish any Kafka connection
+// (a consumer in kafka mode, or a producer for kafka: sinks when brokers are set).
+func usesKafka(s config.NotificationSettings) bool {
+	return s.Mode == "kafka" || len(s.KafkaBrokers) > 0
 }
 
 // notificationSettingsEqual reports whether the two notification settings are

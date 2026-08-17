@@ -2,8 +2,11 @@ package config
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"regexp"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -64,9 +67,17 @@ type Provider struct {
 	kafkaConfigMu sync.RWMutex
 	kafkaConfig   *sarama.Config
 	kafkaSecret   string
+	// kafkaFingerprint is a content hash of the Kafka secret name and its data.
+	// It changes whenever the Kafka credentials/connection settings change, which
+	// lets consumers detect credential rotation and restart their connections.
+	kafkaFingerprint string
 
 	subscribersMu sync.Mutex
 	subscribers   []chan struct{}
+
+	// reloadSignal is fired internally after every successful reload so the
+	// Secret watcher can re-evaluate which Secret it should be watching.
+	reloadSignal chan struct{}
 }
 
 // NewProvider creates a new configuration provider that watches a ConfigMap.
@@ -82,6 +93,7 @@ func NewProvider(ctx context.Context, namespace, configMapName string, defaults 
 		configMapName: configMapName,
 		clientset:     clientset,
 		defaults:      defaults,
+		reloadSignal:  make(chan struct{}, 1),
 	}
 
 	if err := p.loadConfig(ctx); err != nil {
@@ -91,6 +103,7 @@ func NewProvider(ctx context.Context, namespace, configMapName string, defaults 
 	watchCtx, cancel := context.WithCancel(context.Background())
 	p.cancelWatch = cancel
 	go p.watchConfigMap(watchCtx)
+	go p.watchSecret(watchCtx)
 
 	return p, nil
 }
@@ -107,6 +120,15 @@ func (p *Provider) GetKafkaConfig() *sarama.Config {
 	p.kafkaConfigMu.RLock()
 	defer p.kafkaConfigMu.RUnlock()
 	return p.kafkaConfig
+}
+
+// GetKafkaFingerprint returns a content hash of the current Kafka secret. It
+// changes whenever the Kafka credentials/connection settings change, allowing
+// callers to detect credential rotation.
+func (p *Provider) GetKafkaFingerprint() string {
+	p.kafkaConfigMu.RLock()
+	defer p.kafkaConfigMu.RUnlock()
+	return p.kafkaFingerprint
 }
 
 // Subscribe returns a channel that receives a signal whenever the configuration
@@ -163,12 +185,14 @@ func (p *Provider) loadConfig(ctx context.Context) error {
 
 	kafkaSecret := cm.Data["KAFKA_SECRET"]
 	var kafkaCfg *sarama.Config
+	var secretData map[string][]byte
 	if kafkaSecret != "" {
 		secret, err := p.clientset.CoreV1().Secrets(p.namespace).Get(ctx, kafkaSecret, metav1.GetOptions{})
 		if err != nil {
 			return fmt.Errorf("reading KAFKA_SECRET %s/%s: %w", p.namespace, kafkaSecret, err)
 		}
-		kafkaCfg, err = kafkaconfig.NewConfig(secret.Data)
+		secretData = secret.Data
+		kafkaCfg, err = kafkaconfig.NewConfig(secretData)
 		if err != nil {
 			return fmt.Errorf("configuring kafka from secret %s: %w", kafkaSecret, err)
 		}
@@ -179,6 +203,7 @@ func (p *Provider) loadConfig(ctx context.Context) error {
 			return fmt.Errorf("creating default kafka config: %w", err)
 		}
 	}
+	fingerprint := kafkaFingerprint(kafkaSecret, secretData)
 
 	p.mu.Lock()
 	p.config = config
@@ -187,6 +212,7 @@ func (p *Provider) loadConfig(ctx context.Context) error {
 	p.kafkaConfigMu.Lock()
 	p.kafkaConfig = kafkaCfg
 	p.kafkaSecret = kafkaSecret
+	p.kafkaFingerprint = fingerprint
 	p.kafkaConfigMu.Unlock()
 
 	log.Info("configuration loaded",
@@ -198,8 +224,27 @@ func (p *Provider) loadConfig(ctx context.Context) error {
 		"kafka-notifications-group-id", config.Notifications.KafkaNotificationsGroupID)
 
 	p.notifySubscribers()
+	p.signalReload()
 
 	return nil
+}
+
+// signalReload notifies the Secret watcher (non-blocking) that the configuration
+// was reloaded so it can re-evaluate which Secret to watch.
+func (p *Provider) signalReload() {
+	if p.reloadSignal == nil {
+		return
+	}
+	select {
+	case p.reloadSignal <- struct{}{}:
+	default:
+	}
+}
+
+func (p *Provider) currentKafkaSecret() string {
+	p.kafkaConfigMu.RLock()
+	defer p.kafkaConfigMu.RUnlock()
+	return p.kafkaSecret
 }
 
 func (p *Provider) watchConfigMap(ctx context.Context) {
@@ -257,6 +302,84 @@ func (p *Provider) watchConfigMap(ctx context.Context) {
 				}
 			}
 		}()
+	}
+}
+
+// watchSecret watches the Kafka Secret currently referenced by KAFKA_SECRET and
+// reloads the configuration when its contents change, so an in-place credential
+// rotation is picked up without requiring a ConfigMap edit. The watched Secret
+// name is dynamic: when a ConfigMap reload changes (or clears) the reference, the
+// watcher re-establishes itself against the new Secret.
+func (p *Provider) watchSecret(ctx context.Context) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		default:
+		}
+
+		secretName := p.currentKafkaSecret()
+		if secretName == "" {
+			// No Secret referenced; wait until a reload might add one.
+			select {
+			case <-ctx.Done():
+				return
+			case <-p.reloadSignal:
+				continue
+			}
+		}
+
+		watcher, err := p.clientset.CoreV1().Secrets(p.namespace).Watch(ctx, metav1.ListOptions{
+			FieldSelector: fmt.Sprintf("metadata.name=%s", secretName),
+		})
+		if err != nil {
+			log.Error(err, "failed to create Secret watcher, retrying in 5s", "secret", secretName)
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(5 * time.Second):
+			}
+			continue
+		}
+
+		log.Info("watching Kafka Secret for changes", "name", secretName, "namespace", p.namespace)
+		p.consumeSecretEvents(ctx, watcher, secretName)
+	}
+}
+
+func (p *Provider) consumeSecretEvents(ctx context.Context, watcher watch.Interface, secretName string) {
+	defer watcher.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-p.reloadSignal:
+			// A reload happened; the referenced Secret may have changed. If so,
+			// restart the watcher against the new Secret.
+			if p.currentKafkaSecret() != secretName {
+				log.Info("Kafka Secret reference changed, restarting Secret watcher",
+					"old", secretName, "new", p.currentKafkaSecret())
+				return
+			}
+		case event, ok := <-watcher.ResultChan():
+			if !ok {
+				log.Info("Secret watch channel closed, restarting watcher", "secret", secretName)
+				return
+			}
+
+			switch event.Type {
+			case watch.Modified, watch.Added:
+				log.Info("Kafka Secret changed, reloading configuration", "name", secretName)
+				if err := p.loadConfig(ctx); err != nil {
+					log.Error(err, "failed to reload configuration after Secret change")
+				} else {
+					log.Info("configuration reloaded successfully after Secret change")
+				}
+			case watch.Deleted:
+				log.Error(fmt.Errorf("Kafka Secret deleted"), "kafka credentials unavailable", "name", secretName)
+			}
+		}
 	}
 }
 
@@ -342,6 +465,29 @@ func getOrDefault(data map[string]string, key, defaultValue string) string {
 		return v
 	}
 	return defaultValue
+}
+
+// kafkaFingerprint returns a stable content hash of the Kafka secret name and its
+// data. Two calls return the same value iff the secret reference and its contents
+// are identical, so a change indicates the Kafka credentials/connection settings
+// were rotated.
+func kafkaFingerprint(secretName string, data map[string][]byte) string {
+	h := sha256.New()
+	h.Write([]byte(secretName))
+	h.Write([]byte{0})
+
+	keys := make([]string, 0, len(data))
+	for k := range data {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	for _, k := range keys {
+		h.Write([]byte(k))
+		h.Write([]byte{0})
+		h.Write(data[k])
+		h.Write([]byte{0})
+	}
+	return hex.EncodeToString(h.Sum(nil))
 }
 
 // splitAndTrim splits a comma-separated string, trimming whitespace and dropping

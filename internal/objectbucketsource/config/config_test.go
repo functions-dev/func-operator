@@ -106,6 +106,39 @@ func TestParseNotificationSettings_EmptyModeDefaultsToHTTP(t *testing.T) {
 	}
 }
 
+func TestKafkaFingerprint_Stability(t *testing.T) {
+	data := map[string][]byte{
+		"protocol": []byte("SASL_SSL"),
+		"user":     []byte("alice"),
+		"password": []byte("s3cret"),
+	}
+
+	// Same inputs (regardless of map iteration order) produce the same fingerprint.
+	if kafkaFingerprint("kafka-creds", data) != kafkaFingerprint("kafka-creds", data) {
+		t.Fatal("fingerprint is not stable for identical inputs")
+	}
+
+	// A changed value produces a different fingerprint (credential rotation).
+	rotated := map[string][]byte{
+		"protocol": []byte("SASL_SSL"),
+		"user":     []byte("alice"),
+		"password": []byte("rotated"),
+	}
+	if kafkaFingerprint("kafka-creds", data) == kafkaFingerprint("kafka-creds", rotated) {
+		t.Fatal("fingerprint did not change after rotating a value")
+	}
+
+	// A changed secret name produces a different fingerprint.
+	if kafkaFingerprint("kafka-creds", data) == kafkaFingerprint("other-creds", data) {
+		t.Fatal("fingerprint did not change after changing the secret name")
+	}
+
+	// No secret (nil data, empty name) is stable and non-panicking.
+	if kafkaFingerprint("", nil) != kafkaFingerprint("", nil) {
+		t.Fatal("fingerprint is not stable for empty inputs")
+	}
+}
+
 func TestParseConfig_IncludesNotifications(t *testing.T) {
 	cm := &corev1.ConfigMap{
 		Data: map[string]string{
