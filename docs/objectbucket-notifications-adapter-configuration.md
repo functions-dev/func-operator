@@ -13,6 +13,7 @@ These settings are provided at pod startup and require a pod restart to change:
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--config` | `objectbucket-notifications-adapter-config` | Name of the ConfigMap containing adapter configuration |
+| `--create-config` | `false` | If set, create the default configuration ConfigMap at startup when it does not already exist (requires `create` permission on ConfigMaps) |
 | `--adapter-port` | `8888` | Port the notification HTTP server listens on (HTTP mode only) |
 | `--notifications-mode` | `http` | Default for the `NOTIFICATIONS_MODE` ConfigMap key (see below) |
 | `--kafka-brokers` | _(none)_ | Default for the `KAFKA_BROKERS` ConfigMap key (see below) |

@@ -63,7 +63,7 @@ type ObjectBucketSourceReconciler struct {
 // +kubebuilder:rbac:groups=sources.functions.dev,resources=objectbucketsources,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=sources.functions.dev,resources=objectbucketsources/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=sources.functions.dev,resources=objectbucketsources/finalizers,verbs=update
-// +kubebuilder:rbac:groups="",resources=configmaps,verbs=get;list;watch
+// +kubebuilder:rbac:groups="",resources=configmaps,verbs=get;list;watch;create
 // +kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch
 // +kubebuilder:rbac:groups=objectbucket.io,resources=objectbucketclaims,verbs=get;list;watch
 

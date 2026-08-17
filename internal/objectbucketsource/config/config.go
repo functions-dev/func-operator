@@ -12,6 +12,7 @@ import (
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/kubernetes"
@@ -23,6 +24,17 @@ import (
 )
 
 var log = logf.Log.WithName("adapter-config")
+
+// Default values for the adapter configuration. They are used both when resolving
+// missing ConfigMap keys and when creating the default ConfigMap (--create-config).
+const (
+	defaultNoobaaAdapterID       = "mcg-adapter"
+	defaultNoobaaTopicARN        = "mcg-adapter-connection/connect.json"
+	defaultNoobaaStorageClassRE  = `.*noobaa\.io$`
+	defaultRadosgwAdapterID      = "rgw-adapter"
+	defaultRadosgwTopicARN       = "arn:aws:sns:ocs-storagecluster-cephobjectstore::rgw-adapter-notifications"
+	defaultRadosgwStorageClassRE = `.*ceph-rgw$`
+)
 
 // AdapterBackendConfig holds configuration for a single storage backend adapter
 type AdapterBackendConfig struct {
@@ -106,6 +118,76 @@ func NewProvider(ctx context.Context, namespace, configMapName string, defaults 
 	go p.watchSecret(watchCtx)
 
 	return p, nil
+}
+
+// EnsureDefaultConfigMap creates the adapter configuration ConfigMap with default
+// values if it does not already exist. It is a no-op when the ConfigMap is already
+// present. The notification-related defaults (from the command-line flags) are
+// written into the ConfigMap so it reflects the effective startup configuration.
+func EnsureDefaultConfigMap(ctx context.Context, namespace, configMapName string, defaults NotificationSettings) error {
+	clientset, err := kubernetes.NewForConfig(ctrl.GetConfigOrDie())
+	if err != nil {
+		return fmt.Errorf("creating kubernetes clientset: %w", err)
+	}
+
+	_, err = clientset.CoreV1().ConfigMaps(namespace).Get(ctx, configMapName, metav1.GetOptions{})
+	if err == nil {
+		log.Info("configuration ConfigMap already exists, not creating", "name", configMapName, "namespace", namespace)
+		return nil
+	}
+	if !apierrors.IsNotFound(err) {
+		return fmt.Errorf("checking for ConfigMap %s/%s: %w", namespace, configMapName, err)
+	}
+
+	cm := &corev1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      configMapName,
+			Namespace: namespace,
+		},
+		Data: defaultConfigMapData(defaults),
+	}
+
+	if _, err := clientset.CoreV1().ConfigMaps(namespace).Create(ctx, cm, metav1.CreateOptions{}); err != nil {
+		if apierrors.IsAlreadyExists(err) {
+			// Another replica created it concurrently; treat as success.
+			log.Info("configuration ConfigMap already created concurrently", "name", configMapName, "namespace", namespace)
+			return nil
+		}
+		return fmt.Errorf("creating default ConfigMap %s/%s: %w", namespace, configMapName, err)
+	}
+
+	log.Info("created default configuration ConfigMap", "name", configMapName, "namespace", namespace)
+	return nil
+}
+
+// defaultConfigMapData builds the data map for the default configuration ConfigMap.
+func defaultConfigMapData(defaults NotificationSettings) map[string]string {
+	data := map[string]string{
+		"NOOBAA_ADAPTER_ID":                    defaultNoobaaAdapterID,
+		"NOOBAA_ADAPTER_TOPIC_ARN":             defaultNoobaaTopicARN,
+		"NOOBAA_ADAPTER_STORAGECLASS_PATTERN":  defaultNoobaaStorageClassRE,
+		"RADOSGW_ADAPTER_ID":                   defaultRadosgwAdapterID,
+		"RADOSGW_ADAPTER_TOPIC_ARN":            defaultRadosgwTopicARN,
+		"RADOSGW_ADAPTER_STORAGECLASS_PATTERN": defaultRadosgwStorageClassRE,
+	}
+
+	mode := defaults.Mode
+	if mode == "" {
+		mode = "http"
+	}
+	data["NOTIFICATIONS_MODE"] = mode
+
+	if len(defaults.KafkaBrokers) > 0 {
+		data["KAFKA_BROKERS"] = strings.Join(defaults.KafkaBrokers, ",")
+	}
+	if len(defaults.KafkaNotificationsTopics) > 0 {
+		data["KAFKA_NOTIFICATIONS_TOPICS"] = strings.Join(defaults.KafkaNotificationsTopics, ",")
+	}
+	if defaults.KafkaNotificationsGroupID != "" {
+		data["KAFKA_NOTIFICATIONS_GROUP_ID"] = defaults.KafkaNotificationsGroupID
+	}
+
+	return data
 }
 
 // GetConfig returns a copy of the current configuration
@@ -384,8 +466,8 @@ func (p *Provider) consumeSecretEvents(ctx context.Context, watcher watch.Interf
 }
 
 func parseConfig(cm *corev1.ConfigMap, defaults NotificationSettings) (Config, error) {
-	noobaaPattern := getOrDefault(cm.Data, "NOOBAA_ADAPTER_STORAGECLASS_PATTERN", `.*noobaa\.io$`)
-	radosgwPattern := getOrDefault(cm.Data, "RADOSGW_ADAPTER_STORAGECLASS_PATTERN", `.*ceph-rgw$`)
+	noobaaPattern := getOrDefault(cm.Data, "NOOBAA_ADAPTER_STORAGECLASS_PATTERN", defaultNoobaaStorageClassRE)
+	radosgwPattern := getOrDefault(cm.Data, "RADOSGW_ADAPTER_STORAGECLASS_PATTERN", defaultRadosgwStorageClassRE)
 
 	noobaaRe, err := regexp.Compile(noobaaPattern)
 	if err != nil {
@@ -404,13 +486,13 @@ func parseConfig(cm *corev1.ConfigMap, defaults NotificationSettings) (Config, e
 
 	config := Config{
 		NoobaaAdapter: AdapterBackendConfig{
-			ID:                  getOrDefault(cm.Data, "NOOBAA_ADAPTER_ID", "mcg-adapter"),
-			TopicARN:            getOrDefault(cm.Data, "NOOBAA_ADAPTER_TOPIC_ARN", "mcg-adapter-connection/connect.json"),
+			ID:                  getOrDefault(cm.Data, "NOOBAA_ADAPTER_ID", defaultNoobaaAdapterID),
+			TopicARN:            getOrDefault(cm.Data, "NOOBAA_ADAPTER_TOPIC_ARN", defaultNoobaaTopicARN),
 			StorageClassPattern: noobaaRe,
 		},
 		RadosgwAdapter: AdapterBackendConfig{
-			ID:                  getOrDefault(cm.Data, "RADOSGW_ADAPTER_ID", "rgw-adapter"),
-			TopicARN:            getOrDefault(cm.Data, "RADOSGW_ADAPTER_TOPIC_ARN", "arn:aws:sns:ocs-storagecluster-cephobjectstore::rgw-adapter-notifications"),
+			ID:                  getOrDefault(cm.Data, "RADOSGW_ADAPTER_ID", defaultRadosgwAdapterID),
+			TopicARN:            getOrDefault(cm.Data, "RADOSGW_ADAPTER_TOPIC_ARN", defaultRadosgwTopicARN),
 			StorageClassPattern: radosgwRe,
 		},
 		Notifications: notifications,

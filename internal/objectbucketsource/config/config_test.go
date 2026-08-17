@@ -139,6 +139,52 @@ func TestKafkaFingerprint_Stability(t *testing.T) {
 	}
 }
 
+func TestDefaultConfigMapData(t *testing.T) {
+	// With no kafka defaults, only NOTIFICATIONS_MODE is added (defaulting to http),
+	// and no empty kafka keys are written.
+	data := defaultConfigMapData(NotificationSettings{})
+	if data["NOOBAA_ADAPTER_ID"] != defaultNoobaaAdapterID {
+		t.Fatalf("expected default noobaa adapter id, got %q", data["NOOBAA_ADAPTER_ID"])
+	}
+	if data["NOTIFICATIONS_MODE"] != "http" {
+		t.Fatalf("expected NOTIFICATIONS_MODE=http, got %q", data["NOTIFICATIONS_MODE"])
+	}
+	for _, k := range []string{"KAFKA_BROKERS", "KAFKA_NOTIFICATIONS_TOPICS", "KAFKA_NOTIFICATIONS_GROUP_ID"} {
+		if _, ok := data[k]; ok {
+			t.Fatalf("did not expect key %q when kafka defaults are empty", k)
+		}
+	}
+
+	// With kafka defaults, they are serialized into the ConfigMap data.
+	data = defaultConfigMapData(NotificationSettings{
+		Mode:                      "kafka",
+		KafkaBrokers:              []string{"b1:9092", "b2:9092"},
+		KafkaNotificationsTopics:  []string{"t1", "t2"},
+		KafkaNotificationsGroupID: "grp",
+	})
+	if data["NOTIFICATIONS_MODE"] != "kafka" {
+		t.Fatalf("expected NOTIFICATIONS_MODE=kafka, got %q", data["NOTIFICATIONS_MODE"])
+	}
+	if data["KAFKA_BROKERS"] != "b1:9092,b2:9092" {
+		t.Fatalf("unexpected KAFKA_BROKERS: %q", data["KAFKA_BROKERS"])
+	}
+	if data["KAFKA_NOTIFICATIONS_TOPICS"] != "t1,t2" {
+		t.Fatalf("unexpected KAFKA_NOTIFICATIONS_TOPICS: %q", data["KAFKA_NOTIFICATIONS_TOPICS"])
+	}
+	if data["KAFKA_NOTIFICATIONS_GROUP_ID"] != "grp" {
+		t.Fatalf("unexpected KAFKA_NOTIFICATIONS_GROUP_ID: %q", data["KAFKA_NOTIFICATIONS_GROUP_ID"])
+	}
+
+	// The produced data must parse back cleanly, yielding the same effective settings.
+	cfg, err := parseConfig(&corev1.ConfigMap{Data: data}, NotificationSettings{})
+	if err != nil {
+		t.Fatalf("default ConfigMap data failed to parse: %v", err)
+	}
+	if cfg.Notifications.Mode != "kafka" {
+		t.Fatalf("round-trip mode mismatch: %q", cfg.Notifications.Mode)
+	}
+}
+
 func TestParseConfig_IncludesNotifications(t *testing.T) {
 	cm := &corev1.ConfigMap{
 		Data: map[string]string{

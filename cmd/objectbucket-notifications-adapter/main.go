@@ -68,6 +68,7 @@ func main() {
 	var secureMetrics bool
 	var enableHTTP2 bool
 	var configMapName string
+	var createConfig bool
 	var adapterPort int
 	var notificationsMode string
 	var kafkaBrokers string
@@ -94,6 +95,8 @@ func main() {
 		"If set, HTTP/2 will be enabled for the metrics and webhook servers")
 	flag.StringVar(&configMapName, "config", "objectbucket-notifications-adapter-config",
 		"Name of the ConfigMap containing adapter configuration")
+	flag.BoolVar(&createConfig, "create-config", false,
+		"If set, create the default configuration ConfigMap at startup if it does not already exist.")
 	flag.IntVar(&adapterPort, "adapter-port", 8888,
 		"Port the notification HTTP server listens on (HTTP mode only)")
 	flag.StringVar(&notificationsMode, "notifications-mode", "http",
@@ -215,6 +218,15 @@ func main() {
 			os.Exit(1)
 		}
 		ns = strings.TrimSpace(string(nsBytes))
+	}
+
+	// Optionally create the default configuration ConfigMap before the provider
+	// tries to read it.
+	if createConfig {
+		if err := config.EnsureDefaultConfigMap(context.Background(), ns, configMapName, notificationDefaults); err != nil {
+			setupLog.Error(err, "failed to ensure default configuration ConfigMap")
+			os.Exit(1)
+		}
 	}
 
 	// Create configuration provider
