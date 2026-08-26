@@ -37,9 +37,10 @@ func deployerIsKedaOrRaw() bool {
 }
 
 // Newest knative/func that still ships go/http middleware func-go v0.21.3
-// and has knative, raw, and keda deployers. Current CLI (1.23+) ships
-// v0.22.0, so a seed with this version makes the operator redeploy.
-const staleFuncCLI = "v1.22.2"
+// and has knative, raw, and keda. v1.22.3 writes func.yaml before a remote
+// pipeline upload so --deployer is on disk for func-util. Current CLI
+// (1.23+) ships func-go v0.22.0, so this seed makes the operator redeploy.
+const staleFuncCLI = "v1.22.3"
 const staleMiddlewareVersion = "v0.21.3"
 
 // workloadKind is the cluster object that holds the function pod template.
