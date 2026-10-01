@@ -30,4 +30,5 @@ jobs:
       - name: Running Tests
         run: |
           go mod tidy
+          (cd api && go mod tidy)
           make test

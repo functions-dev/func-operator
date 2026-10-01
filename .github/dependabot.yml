@@ -2,7 +2,10 @@ version: 2
 updates:
   # Enable version updates for Go modules
   - package-ecosystem: "gomod"
-    directory: "/"
+    # api/ is a separate Go module with its own go.mod
+    directories:
+      - "/"
+      - "/api"
     schedule:
       interval: "daily"
     open-pull-requests-limit: 10

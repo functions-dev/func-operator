@@ -9,6 +9,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/credentials v1.20.6
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.114.0
 	github.com/cloudevents/sdk-go/v2 v2.16.2
+	github.com/functions-dev/func-operator/api v0.0.0
 	github.com/go-git/go-git/v6 v6.0.0-alpha.5
 	github.com/go-logr/logr v1.4.4
 	github.com/google/uuid v1.6.0
@@ -181,3 +182,5 @@ require (
 )
 
 replace knative.dev/func => knative.dev/func v0.48.1-0.20260427113619-77707d1de8b6
+
+replace github.com/functions-dev/func-operator/api => ./api
