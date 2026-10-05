@@ -8,40 +8,40 @@ The operator does **not** handle initial deployment. Functions must first be dep
 
 ## Components
 
-- **FunctionReconciler** (`internal/controller/`) — The central controller. Watches `Function` custom resources and reconciles them. Also watches the `func-operator-controller-config` ConfigMap to re-reconcile functions when the operator-wide `autoUpdateMiddleware` default changes. Runs up to 10 concurrent reconciliations.
+- **FunctionReconciler** (`internal/controller/`) - The central controller. Watches `Function` custom resources and reconciles them. Also watches the `func-operator-controller-config` ConfigMap to re-reconcile functions when the operator-wide `autoUpdateMiddleware` default changes. Runs up to 10 concurrent reconciliations.
 
-- **FuncCliManager** (`internal/funccli/`) — Wraps the Knative `func` CLI binary. Periodically checks GitHub for new releases and downloads them (with SHA256 checksum verification and atomic install). Runs `func deploy`, `func describe`, and `func version` as subprocesses. The download logic (`DownloadAndInstall`) is shared with e2e test utilities via `internal/funccli/download.go`.
+- **FuncCliManager** (`internal/funccli/`) - Wraps the Knative `func` CLI binary. Periodically checks GitHub for new releases and downloads them (with SHA256 checksum verification and atomic install). Runs `func deploy`, `func describe`, and `func version` as subprocesses. The download logic (`DownloadAndInstall`) is shared with e2e test utilities via `internal/funccli/download.go`.
 
-- **GitManager** (`internal/git/`) — Clones function source repositories with authentication support: HTTP/HTTPS (token or basic auth) and SSH (private key with optional passphrase and known_hosts). Uses go-git for pure-Go shallow cloning (single-branch, depth 1).
+- **GitManager** (`internal/git/`) - Clones function source repositories with authentication support: HTTP/HTTPS (token or basic auth) and SSH (private key with optional passphrase and known_hosts). Uses go-git for pure-Go shallow cloning (single-branch, depth 1).
 
-- **StatusTracker** (`internal/controller/status_tracker.go`) — Buffers status changes during reconciliation and persists them in a single API call at the end via `Flush()`. Supports mid-reconcile flushes for long-running operations (e.g., before a deployment starts) so users see progress.
+- **StatusTracker** (`internal/controller/status_tracker.go`) - Buffers status changes during reconciliation and persists them in a single API call at the end via `Flush()`. Supports mid-reconcile flushes for long-running operations (e.g., before a deployment starts) so users see progress.
 
 ## CRD: Function
 
 Defined in `api/v1alpha1/function_types.go`. A `Function` resource represents a deployed serverless function that the operator should monitor.
 
 **Spec** (user-provided):
-- `repository.url` — Git repository containing the function source
-- `repository.revision` — Branch name or full ref to build (optional, defaults to the repo's default branch)
-- `repository.dir` — Directory within the repo that holds the function (for monorepos)
-- `repository.authSecretRef` — Secret for private repo authentication
-- `registry.authSecretRef` — Secret for container registry authentication
-- `autoUpdateMiddleware` — Override operator default (optional)
+- `repository.url` - Git repository containing the function source
+- `repository.revision` - Branch name or full ref to build (optional, defaults to the repo's default branch)
+- `repository.dir` - Directory within the repo that holds the function (for monorepos)
+- `repository.authSecretRef` - Secret for private repo authentication
+- `registry.authSecretRef` - Secret for container registry authentication
+- `autoUpdateMiddleware` - Override operator default (optional)
 
 **Status** (operator-managed):
-- `git` — Resolved revision, observed commit, last check time
-- `deployment` — Current image, build time, deployer, runtime
-- `middleware` — Current/available versions, auto-update config, rebuild state
-- `service` — URL and readiness of the underlying Knative Service
-- `conditions` — Standard Kubernetes conditions (see below)
-- `history` — Last 20 reconciliation events
+- `git` - Resolved revision, observed commit, last check time
+- `deployment` - Current image, build time, deployer, runtime
+- `middleware` - Current/available versions, auto-update config, rebuild state
+- `service` - URL and readiness of the underlying Knative Service
+- `conditions` - Standard Kubernetes conditions (see below)
+- `history` - Last 20 reconciliation events
 
 ## Reconciliation Flow
 
 ```mermaid
 flowchart TD
     start["Reconcile()"] --> get["Get Function CR"]
-    get -->|Not found| ignore["Exit — already deleted"]
+    get -->|Not found| ignore["Exit - already deleted"]
     get -->|Found| tracker["Create StatusTracker"]
     tracker --> prepare
 

@@ -8,7 +8,7 @@
 2. **Decision logic** - should we redeploy or not?
 3. **Status bookkeeping** - ~15 status field assignments scattered throughout
 
-This makes the method hard to follow. There's also a redundant `Describe` call — the second one (line 321) re-fetches data that only changes after a redeploy.
+This makes the method hard to follow. There's also a redundant `Describe` call - the second one (line 321) re-fetches data that only changes after a redeploy.
 
 ## Design
 
@@ -69,10 +69,10 @@ The second `Describe` call only happens inside the deploy branch (where it's act
 
 ### Cleanup
 
-`isMiddlewareLatest` is no longer needed — the version comparison happens inside `checkMiddlewareState` using data from the single `Describe` call.
+`isMiddlewareLatest` is no longer needed - the version comparison happens inside `checkMiddlewareState` using data from the single `Describe` call.
 
 ## Decisions
 
-- **Keep status field duplication across switch cases** — each case is self-contained and readable top-to-bottom
-- **`autoUpdate` lives as a field on `middlewareOutdated`** rather than being a third type — the two outdated cases share the same data
-- **All types are unexported** — this is controller-internal
+- **Keep status field duplication across switch cases** - each case is self-contained and readable top-to-bottom
+- **`autoUpdate` lives as a field on `middlewareOutdated`** rather than being a third type - the two outdated cases share the same data
+- **All types are unexported** - this is controller-internal

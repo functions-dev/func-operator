@@ -6,8 +6,8 @@ The project uses [semantic versioning](https://semver.org/) with a `v` prefix: `
 
 ## Branch Model
 
-- **`main`** — Active development. All PRs target `main`.
-- **`release-{MAJOR}.{MINOR}`** — Maintenance branches for each minor version (e.g. `release-0.3`). Created when a minor version is ready to ship.
+- **`main`** - Active development. All PRs target `main`.
+- **`release-{MAJOR}.{MINOR}`** - Maintenance branches for each minor version (e.g. `release-0.3`). Created when a minor version is ready to ship.
 
 ## Creating a New Minor Release
 
