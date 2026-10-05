@@ -208,4 +208,4 @@ Helpers populate the state struct and return plain errors. They never call `Mark
 - **Pro**: All condition logic in one place, easy to read the full status story
 - **Pro**: Helpers are pure data gatherers, easy to test
 - **Pro**: Mid-reconcile flushes use the same mechanism
-- **Con**: State struct and `syncStatus` must be kept in sync with helpers — two places to update when adding new status fields
+- **Con**: State struct and `syncStatus` must be kept in sync with helpers - two places to update when adding new status fields

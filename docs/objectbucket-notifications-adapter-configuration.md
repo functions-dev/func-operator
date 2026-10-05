@@ -38,7 +38,7 @@ These settings can be changed at runtime by modifying the ConfigMap. The adapter
 | `RADOSGW_ADAPTER_ID` | `rgw-adapter` | Identifier used in the S3 bucket notification configuration for RadosGW-managed OBCs |
 | `RADOSGW_ADAPTER_TOPIC_ARN` | `arn:aws:sns:ocs-storagecluster-cephobjectstore::rgw-adapter-notifications` | RadosGW SNS TopicArn used in put-bucket-notification calls |
 | `RADOSGW_ADAPTER_STORAGECLASS_PATTERN` | `.*ceph-rgw$` | Regex matched against OBC `spec.storageClassName` to classify as RadosGW-managed |
-| `NOTIFICATIONS_MODE` | value of `--notifications-mode` (`http`) | `http` or `kafka` — selects how the adapter receives NooBaa/RadosGW notifications. Switching modes restarts the notification runner. |
+| `NOTIFICATIONS_MODE` | value of `--notifications-mode` (`http`) | `http` or `kafka` - selects how the adapter receives NooBaa/RadosGW notifications. Switching modes restarts the notification runner. |
 | `KAFKA_BROKERS` | value of `--kafka-brokers` | Comma-separated list of Kafka broker addresses (required for Kafka mode). Changing it gracefully restarts the Kafka consumer. |
 | `KAFKA_NOTIFICATIONS_TOPICS` | value of `--kafka-notifications-topics` | Comma-separated list of Kafka topics to consume notifications from (required for Kafka mode). Changing it gracefully restarts the Kafka consumer. |
 | `KAFKA_NOTIFICATIONS_GROUP_ID` | value of `--kafka-notifications-group-id` | Consumer group ID for consuming notifications (required for Kafka mode). Changing it gracefully restarts the Kafka consumer. |
@@ -138,7 +138,7 @@ When any of them change, the adapter:
 
 This means you can, for example, switch the adapter from `http` to `kafka` mode, point the
 consumer at different brokers, subscribe to different topics, change the consumer group ID,
-or rotate the Kafka credentials — all without restarting the pod.
+or rotate the Kafka credentials - all without restarting the pod.
 
 The runner is restarted only when a change actually affects it: changes to unrelated
 ConfigMap keys (e.g. adapter IDs) do not restart it, and a Kafka credential change only
@@ -166,7 +166,7 @@ To rotate Kafka credentials without restarting the adapter pod:
 1. Update the Kafka Secret with new credentials in place, **or** update the ConfigMap to
    reference a new secret via `KAFKA_SECRET`.
 2. The adapter watches both the ConfigMap and the referenced Kafka Secret, so it detects the
-   change automatically, rebuilds the Kafka configuration, and — if Kafka is in use —
+   change automatically, rebuilds the Kafka configuration, and - if Kafka is in use -
    gracefully restarts its Kafka producer/consumer so the new credentials take effect
    immediately.
 

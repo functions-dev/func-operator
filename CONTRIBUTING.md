@@ -23,9 +23,9 @@ To backport a merged PR to a release branch, comment `/cherry-pick release-X.Y` 
 
 ## Further Reading
 
-- [Architecture Overview](docs/architecture.md) — system components, reconciliation flow, CRD lifecycle
-- [Release Process](docs/release.md) — branching model, versioning, automated tag management
-- [Gitea Integration](docs/development/gitea-integration.md) — e2e test infrastructure details
+- [Architecture Overview](docs/architecture.md) - system components, reconciliation flow, CRD lifecycle
+- [Release Process](docs/release.md) - branching model, versioning, automated tag management
+- [Gitea Integration](docs/development/gitea-integration.md) - e2e test infrastructure details
 
 ## Development
 
@@ -96,9 +96,9 @@ make update-codegen
 ```
 
 This runs three sub-targets:
-- `generate` — DeepCopy and DeepCopyInto methods
-- `manifests` — CRDs, ClusterRoles, and webhook configurations
-- `gen-mocks` — Mock implementations via [mockery](https://github.com/vektra/mockery)
+- `generate` - DeepCopy and DeepCopyInto methods
+- `manifests` - CRDs, ClusterRoles, and webhook configurations
+- `gen-mocks` - Mock implementations via [mockery](https://github.com/vektra/mockery)
 
 ## Go Modules
 
