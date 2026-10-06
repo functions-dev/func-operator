@@ -211,7 +211,7 @@ func ensureFuncVersion(version string) (string, error) {
 	}
 	defer syscall.Flock(int(lockFile.Fd()), syscall.LOCK_UN) //nolint:errcheck
 
-	// Re-check after acquiring the lock — another process may have finished the download
+	// Re-check after acquiring the lock - another process may have finished the download
 	if _, err := os.Stat(funcBinary); err == nil {
 		return funcBinary, nil
 	}
