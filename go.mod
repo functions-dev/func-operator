@@ -6,7 +6,7 @@ require (
 	code.gitea.io/sdk/gitea v0.25.1
 	github.com/IBM/sarama v1.61.1
 	github.com/aws/aws-sdk-go-v2 v1.47.3
-	github.com/aws/aws-sdk-go-v2/credentials v1.20.6
+	github.com/aws/aws-sdk-go-v2/credentials v1.20.9
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.114.3
 	github.com/cloudevents/sdk-go/v2 v2.16.2
 	github.com/functions-dev/func-operator/api v0.0.0
