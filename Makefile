@@ -133,9 +133,15 @@ test: manifests generate fmt vet setup-envtest ## Run tests.
 # the operator to rebuild from source. The spec skips itself when unset.
 STALE_FUNCTION_IMAGE ?=
 
+# E2E_SKIP is a regex matched against spec text; matching specs are skipped
+# (e.g. E2E_SKIP="SSH" drops the SSH-repository specs, which need an SSH
+# endpoint the cluster may not expose). Empty means skip nothing.
+E2E_SKIP ?=
+GINKGO_SKIP := $(if $(E2E_SKIP),--skip="$(E2E_SKIP)",)
+
 .PHONY: test-e2e ## Run e2e tests.
 test-e2e: ginkgo
-	STALE_FUNCTION_IMAGE=$(STALE_FUNCTION_IMAGE) $(GINKGO) -v --timeout=1h --label-filter="!bundle" --fail-fast --flake-attempts=2 -p ./test/e2e/
+	STALE_FUNCTION_IMAGE=$(STALE_FUNCTION_IMAGE) $(GINKGO) -v --timeout=1h --label-filter="!bundle" $(GINKGO_SKIP) --fail-fast --flake-attempts=2 -p ./test/e2e/
 
 .PHONY: test-e2e-bundle ## Run bundle e2e tests.
 test-e2e-bundle: operator-sdk docker-build docker-push bundle bundle-build bundle-push install-olm-in-cluster ginkgo
