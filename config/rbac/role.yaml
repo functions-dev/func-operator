@@ -93,6 +93,17 @@ rules:
   - update
   - watch
 - apiGroups:
+  - keda.sh
+  resources:
+  - scaledobjects
+  - triggerauthentications
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - update
+- apiGroups:
   - objectbucket.io
   resources:
   - objectbucketclaims

@@ -129,4 +129,63 @@ var _ = Describe("Function RBAC", func() {
 			Expect(rb.RoleRef.Name).To(Equal(deployFunctionRoleName))
 		})
 	})
+
+	Context("ensureDeployFunctionRole", func() {
+		var reconciler *FunctionReconciler
+		var testNamespace string
+
+		// func's keda deployer reads ScaledObjects on every keda deploy
+		kedaRule := rbacv1.PolicyRule{
+			APIGroups: []string{"keda.sh"},
+			Resources: []string{"scaledobjects", "triggerauthentications"},
+			Verbs:     []string{"create", "delete", "get", "list", "update"},
+		}
+
+		BeforeEach(func() {
+			testNamespace = "rbac-role-test-" + rand.String(6)
+			ns := &v1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: testNamespace}}
+			Expect(k8sClient.Create(ctx, ns)).To(Succeed())
+
+			reconciler = &FunctionReconciler{
+				Client:   k8sClient,
+				Scheme:   k8sClient.Scheme(),
+				Recorder: &events.FakeRecorder{},
+			}
+		})
+
+		It("should grant the keda deployer access to ScaledObjects and TriggerAuthentications", func() {
+			Expect(reconciler.ensureDeployFunctionRole(ctx, testNamespace)).To(Succeed())
+
+			role := &rbacv1.Role{}
+			Expect(k8sClient.Get(ctx, types.NamespacedName{
+				Name:      deployFunctionRoleName,
+				Namespace: testNamespace,
+			}, role)).To(Succeed())
+			Expect(role.Rules).To(ContainElement(kedaRule))
+		})
+
+		It("should add the keda.sh rule to an existing Role without it", func() {
+			existing := &rbacv1.Role{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      deployFunctionRoleName,
+					Namespace: testNamespace,
+				},
+				Rules: []rbacv1.PolicyRule{{
+					APIGroups: []string{"http.keda.sh"},
+					Resources: []string{"httpscaledobjects"},
+					Verbs:     []string{"create", "delete", "get", "list", "patch", "update", "watch"},
+				}},
+			}
+			Expect(k8sClient.Create(ctx, existing)).To(Succeed())
+
+			Expect(reconciler.ensureDeployFunctionRole(ctx, testNamespace)).To(Succeed())
+
+			role := &rbacv1.Role{}
+			Expect(k8sClient.Get(ctx, types.NamespacedName{
+				Name:      deployFunctionRoleName,
+				Namespace: testNamespace,
+			}, role)).To(Succeed())
+			Expect(role.Rules).To(ContainElement(kedaRule))
+		})
+	})
 })

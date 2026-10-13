@@ -78,6 +78,13 @@ func (r *FunctionReconciler) ensureDeployFunctionRole(ctx context.Context, names
 				APIGroups: []string{"http.keda.sh"},
 				Resources: []string{"httpscaledobjects"},
 				Verbs:     []string{"create", "delete", "get", "list", "patch", "update", "watch"},
+			}, {
+				// func's keda deployer reads ScaledObjects on every deploy and creates
+				// ScaledObjects and TriggerAuthentications for kafka triggers
+				// (knative/func#4069, granted by func itself in knative/func#4077)
+				APIGroups: []string{"keda.sh"},
+				Resources: []string{"scaledobjects", "triggerauthentications"},
+				Verbs:     []string{"create", "delete", "get", "list", "update"},
 			},
 		},
 	}
