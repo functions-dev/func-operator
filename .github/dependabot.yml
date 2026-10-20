@@ -23,6 +23,13 @@ updates:
       # tags such as v0.50.3 sort higher but lack it, so updates would break the
       # build. Remove once a func release includes #4064.
       - dependency-name: "knative.dev/func"
+      # The operator follows the Kubernetes version of the knative stack
+      # (knative.dev/pkg, serving, eventing, func): take only patch updates and
+      # raise the minor version by hand once knative has moved.
+      - dependency-name: "k8s.io/*"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
+      - dependency-name: "sigs.k8s.io/controller-runtime"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
 
   # Enable version updates for GitHub Actions
   - package-ecosystem: "github-actions"
