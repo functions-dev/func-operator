@@ -2,10 +2,10 @@ version: 2
 updates:
   # Enable version updates for Go modules
   - package-ecosystem: "gomod"
-    # api/ is a separate Go module with its own go.mod
-    directories:
-      - "/"
-      - "/api"
+    # api/ is a separate Go module, left out on purpose: its go.mod sets the
+    # lowest k8s.io versions that importers such as knative/func must use.
+    # Raise them by hand, only when the types need a newer Kubernetes API.
+    directory: "/"
     schedule:
       interval: "daily"
     open-pull-requests-limit: 10
