@@ -43,6 +43,12 @@ For each tag, the `release` workflow:
 
 4. **Creates a GitHub release** with auto-generated release notes and the install manifest attached
 
+5. **Tags the `api` Go module** with `api/v{VERSION}` on the same commit, so other projects (e.g. knative/func) can import the CRD types that match this release:
+   ```bash
+   go get github.com/functions-dev/func-operator/api@v{VERSION}
+   ```
+   The tag is created for every release, even when `api/` did not change. It is skipped when the commit has no api module (release branches before `release-0.4`).
+
 ## Nightly Builds
 
 The `nightly-build` workflow runs daily at 00:00 UTC and pushes images from `main` tagged as `:main`.

@@ -187,3 +187,24 @@ jobs:
             --generate-notes \
             --latest=${{ steps.version.outputs.is_latest }} \
             func-operator.yaml
+
+      # api/ is a separate Go module, versioned by tags with an api/ prefix.
+      # Tag it on the same commit with every release, so other projects (e.g. knative/func)
+      # can use the CRD types that match this operator version.
+      - name: Tag api module
+        run: |
+          TAG="api/v${{ steps.version.outputs.full }}"
+
+          # Release branches before release-0.4 have no api module
+          if [ ! -f api/go.mod ]; then
+            echo "No api module at this commit, skipping"
+            exit 0
+          fi
+
+          if git rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
+            echo "Tag $TAG already exists, skipping"
+            exit 0
+          fi
+
+          git tag "$TAG"
+          git push origin "$TAG"
