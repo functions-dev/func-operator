@@ -127,9 +127,21 @@ test: manifests generate fmt vet setup-envtest ## Run tests.
 	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" go test $$(go list ./... | grep -v e2e) -coverprofile cover.out
 	cd api && go test ./... -coverprofile cover.out
 
+# STALE_FUNCTION_IMAGE is a pre-built, publicly pullable function image whose
+# "middleware-version" label is older than the operator's current version. The
+# middleware-rebuild e2e spec seeds its deployment from this image and expects
+# the operator to rebuild from source. The spec skips itself when unset.
+STALE_FUNCTION_IMAGE ?=
+
+# E2E_SKIP is a regex matched against spec text; matching specs are skipped
+# (e.g. E2E_SKIP="SSH" drops the SSH-repository specs, which need an SSH
+# endpoint the cluster may not expose). Empty means skip nothing.
+E2E_SKIP ?=
+GINKGO_SKIP := $(if $(E2E_SKIP),--skip="$(E2E_SKIP)",)
+
 .PHONY: test-e2e ## Run e2e tests.
 test-e2e: ginkgo
-	$(GINKGO) -v --timeout=1h --label-filter="!bundle" --fail-fast --flake-attempts=2 -p ./test/e2e/
+	STALE_FUNCTION_IMAGE=$(STALE_FUNCTION_IMAGE) $(GINKGO) -v --timeout=1h --label-filter="!bundle" $(GINKGO_SKIP) --fail-fast --flake-attempts=2 -p ./test/e2e/
 
 .PHONY: test-e2e-bundle ## Run bundle e2e tests.
 test-e2e-bundle: operator-sdk docker-build docker-push bundle bundle-build bundle-push install-olm-in-cluster ginkgo
@@ -280,6 +292,9 @@ deploy: manifests kustomize ## Deploy func-operator controller to the K8s cluste
 	$(KUSTOMIZE) build config/default | $(KUBECTL) apply -f -
 	$(MAKE) patch-registry-cert
 	$(KUBECTL) wait deployment --all --timeout=120s --for=condition=Available -n func-operator-system
+
+.PHONY: deploy-full
+deploy-full: docker-build docker-push deploy ## Build and push the manager image, then deploy it. Run as a single invocation so all steps share one IMG tag (VERSION embeds a build timestamp).
 
 .PHONY: deploy-source-objectbucket
 deploy-source-objectbucket: manifests kustomize ## Deploy objectbucket-notifications-adapter to the K8s cluster.

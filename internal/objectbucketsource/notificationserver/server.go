@@ -82,7 +82,9 @@ func (s *NotificationServer) superviseRun(ctx context.Context, changes <-chan st
 	for {
 		select {
 		case <-ctx.Done():
-			<-errCh
+			if err := <-errCh; err != nil {
+				log.Error(err, "notification runner stopped with error during shutdown")
+			}
 			return true
 		case err := <-errCh:
 			// The runner exited on its own (fatal setup error). Restart it,
@@ -113,7 +115,9 @@ func (s *NotificationServer) superviseRun(ctx context.Context, changes <-chan st
 				"old-group-id", snap.settings.KafkaNotificationsGroupID, "new-group-id", newSnap.settings.KafkaNotificationsGroupID,
 				"kafka-credentials-changed", kafkaCredsChanged)
 			cancel()
-			<-errCh
+			if err := <-errCh; err != nil {
+				log.Error(err, "notification runner stopped with error during restart")
+			}
 			return false
 		}
 	}

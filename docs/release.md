@@ -6,8 +6,8 @@ The project uses [semantic versioning](https://semver.org/) with a `v` prefix: `
 
 ## Branch Model
 
-- **`main`** — Active development. All PRs target `main`.
-- **`release-{MAJOR}.{MINOR}`** — Maintenance branches for each minor version (e.g. `release-0.3`). Created when a minor version is ready to ship.
+- **`main`** - Active development. All PRs target `main`.
+- **`release-{MAJOR}.{MINOR}`** - Maintenance branches for each minor version (e.g. `release-0.3`). Created when a minor version is ready to ship.
 
 ## Creating a New Minor Release
 
@@ -42,6 +42,12 @@ For each tag, the `release` workflow:
    - `ghcr.io/functions-dev/func-operator-bundle:{VERSION}`
 
 4. **Creates a GitHub release** with auto-generated release notes and the install manifest attached
+
+5. **Tags the `api` Go module** with `api/v{VERSION}` on the same commit, so other projects (e.g. knative/func) can import the CRD types that match this release:
+   ```bash
+   go get github.com/functions-dev/func-operator/api@v{VERSION}
+   ```
+   The tag is created for every release, even when `api/` did not change. It is skipped when the commit has no api module (release branches before `release-0.4`).
 
 ## Nightly Builds
 

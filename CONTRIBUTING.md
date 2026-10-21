@@ -23,9 +23,9 @@ To backport a merged PR to a release branch, comment `/cherry-pick release-X.Y` 
 
 ## Further Reading
 
-- [Architecture Overview](docs/architecture.md) — system components, reconciliation flow, CRD lifecycle
-- [Release Process](docs/release.md) — branching model, versioning, automated tag management
-- [Gitea Integration](docs/development/gitea-integration.md) — e2e test infrastructure details
+- [Architecture Overview](docs/architecture.md) - system components, reconciliation flow, CRD lifecycle
+- [Release Process](docs/release.md) - branching model, versioning, automated tag management
+- [Gitea Integration](docs/development/gitea-integration.md) - e2e test infrastructure details
 
 ## Development
 
@@ -96,9 +96,9 @@ make update-codegen
 ```
 
 This runs three sub-targets:
-- `generate` — DeepCopy and DeepCopyInto methods
-- `manifests` — CRDs, ClusterRoles, and webhook configurations
-- `gen-mocks` — Mock implementations via [mockery](https://github.com/vektra/mockery)
+- `generate` - DeepCopy and DeepCopyInto methods
+- `manifests` - CRDs, ClusterRoles, and webhook configurations
+- `gen-mocks` - Mock implementations via [mockery](https://github.com/vektra/mockery)
 
 ## Go Modules
 
@@ -107,6 +107,8 @@ This runs three sub-targets:
 - The root `go.mod` requires it and points it at the local folder with `replace github.com/functions-dev/func-operator/api => ./api`, so the operator always builds against the types in the same commit.
 - `./...` from the repository root does not include `api/`. The `fmt`, `vet`, `test` and `lint` make targets run a second time inside `api/`; do the same when running Go commands by hand, e.g. `cd api && go mod tidy`.
 - Other projects use released versions of the module, tagged with an `api/` prefix (e.g. `api/v0.4.0`).
+- `api/go.mod` keeps its `k8s.io` versions low on purpose (now v0.36.0). Go treats them as the minimum for every project that imports the module, so a newer version here forces knative/func to upgrade Kubernetes too. Dependabot does not update `api/`: raise its versions by hand, only when the types need a newer Kubernetes API. The operator itself builds with the versions in the root `go.mod`.
+- The root `go.mod` follows the Kubernetes version of the knative stack (knative.dev/pkg, serving, eventing, func), now v0.36.5 with controller-runtime v0.24. Dependabot takes only patch updates for `k8s.io/*` and controller-runtime: raise the minor version by hand once knative has moved.
 
 ## Testing
 

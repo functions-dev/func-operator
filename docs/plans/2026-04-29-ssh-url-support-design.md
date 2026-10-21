@@ -31,9 +31,9 @@ Add support for SSH repository URLs in the Function CR, allowing users to specif
 - For `http`/`https` scheme: existing token/username-password logic unchanged.
 
 **Auth secret fields (SSH):**
-- `sshPrivateKey` (required for private repos) — PEM-encoded private key
-- `sshPrivateKeyPassword` (optional) — passphrase for encrypted keys
-- `known_hosts` (optional) — known_hosts file content for host key verification
+- `sshPrivateKey` (required for private repos) - PEM-encoded private key
+- `sshPrivateKeyPassword` (optional) - passphrase for encrypted keys
+- `known_hosts` (optional) - known_hosts file content for host key verification
 
 ### 2. Unit Tests (`internal/git/manager_test.go`)
 
@@ -48,20 +48,20 @@ New test file covering `getClientOptions`:
 ### 3. E2E Test Utilities
 
 **`test/utils/gitea.go`:**
-- `GetSSHEndpoint()` — reads `ssh` key from `gitea-endpoint` ConfigMap
-- `CreateSSHKey(username, password, title, publicKey string)` — registers SSH public key via Gitea SDK `CreatePublicKey()`
-- `SSHRepoURL(owner, repo string)` — builds SCP-style URL from SSH endpoint
+- `GetSSHEndpoint()` - reads `ssh` key from `gitea-endpoint` ConfigMap
+- `CreateSSHKey(username, password, title, publicKey string)` - registers SSH public key via Gitea SDK `CreatePublicKey()`
+- `SSHRepoURL(owner, repo string)` - builds SCP-style URL from SSH endpoint
 
 **`test/utils/git.go`:**
-- `WithSSHKey(privateKeyPath string)` option — configures `InitializeRepoWithFunction` to clone/push via SSH using `GIT_SSH_COMMAND` with the provided private key
+- `WithSSHKey(privateKeyPath string)` option - configures `InitializeRepoWithFunction` to clone/push via SSH using `GIT_SSH_COMMAND` with the provided private key
 
 ### 4. E2E Tests (`test/e2e/func_deploy_test.go`)
 
 Three new test cases under a new `Context("with an SSH repository URL", ...)`:
 
-1. **Public repo with SSH URL** — Create public repo, push via HTTP, create Function CR with SSH URL, verify function becomes ready.
-2. **Private repo with SSH key auth** — Generate SSH keypair, register public key in Gitea, create Secret with `sshPrivateKey`, create Function CR with SSH URL + authSecretRef, verify function becomes ready.
-3. **Private repo without auth secret** — Create private repo, create Function CR with SSH URL but no authSecretRef, verify function fails with auth error.
+1. **Public repo with SSH URL** - Create public repo, push via HTTP, create Function CR with SSH URL, verify function becomes ready.
+2. **Private repo with SSH key auth** - Generate SSH keypair, register public key in Gitea, create Secret with `sshPrivateKey`, create Function CR with SSH URL + authSecretRef, verify function becomes ready.
+3. **Private repo without auth secret** - Create private repo, create Function CR with SSH URL but no authSecretRef, verify function fails with auth error.
 
 ### 5. README Updates
 

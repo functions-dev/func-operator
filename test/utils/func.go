@@ -29,10 +29,21 @@ import (
 	ginkgo "github.com/onsi/ginkgo/v2"
 )
 
+// funcBin returns the func binary to invoke. It honors the FUNC_BIN environment
+// variable (an absolute path or a name on PATH), defaulting to "func" on PATH.
+// This lets manual runs point at a local build and CI point at a binary extracted
+// from the operator image.
+func funcBin() string {
+	if b := os.Getenv("FUNC_BIN"); b != "" {
+		return b
+	}
+	return "func"
+}
+
 // RunFunc executes the func CLI with the current/latest version
 func RunFunc(command string, args ...string) (string, error) {
 	allArgs := append([]string{command}, args...)
-	cmd := exec.Command("func", allArgs...)
+	cmd := exec.Command(funcBin(), allArgs...)
 	return Run(cmd)
 }
 
@@ -49,6 +60,39 @@ func RunFuncWithVersion(version string, command string, args ...string) (string,
 	return Run(cmd)
 }
 
+// funcDeployArgs assembles the `func deploy` flags from the resolved options.
+func funcDeployArgs(functionDir string, opts *FuncDeployOptions) []string {
+	args := []string{"--path", functionDir}
+
+	// --image and --registry are mutually exclusive in func. With a pre-built
+	// image (digest) func skips build/push, so the registry flags don't apply.
+	if opts.Image != "" {
+		// Deploy a pre-built image as-is: no build, no push.
+		args = append(args, "--image", opts.Image, "--build=false", "--push=false")
+	} else {
+		args = append(args,
+			"--registry", opts.Registry,
+			fmt.Sprintf("--registry-insecure=%t", opts.RegistryInsecure),
+		)
+	}
+
+	if opts.Namespace != "" {
+		args = append(args, "--namespace", opts.Namespace)
+	}
+
+	// A pre-built image with a digest disables build/push, so the builder is
+	// irrelevant in that case.
+	if opts.Builder != "" && opts.Image == "" {
+		args = append(args, "--builder", opts.Builder)
+	}
+
+	if opts.Deployer != "" && opts.Deployer != "knative" {
+		args = append(args, "--deployer", opts.Deployer)
+	}
+
+	return args
+}
+
 // RunFuncDeploy runs func deploy with retry logic for transient network errors
 func RunFuncDeploy(functionDir string, optFns ...FuncDeployOption) (string, error) {
 	opts := &FuncDeployOptions{
@@ -63,23 +107,7 @@ func RunFuncDeploy(functionDir string, optFns ...FuncDeployOption) (string, erro
 		optFn(opts)
 	}
 
-	args := []string{
-		"--path", functionDir,
-		"--registry", opts.Registry,
-		fmt.Sprintf("--registry-insecure=%t", opts.RegistryInsecure),
-	}
-
-	if opts.Namespace != "" {
-		args = append(args, "--namespace", opts.Namespace)
-	}
-
-	if opts.Builder != "" {
-		args = append(args, "--builder", opts.Builder)
-	}
-
-	if opts.Deployer != "" && opts.Deployer != "knative" {
-		args = append(args, "--deployer", opts.Deployer)
-	}
+	args := funcDeployArgs(functionDir, opts)
 
 	// When using the pack builder, create a per-deploy PACK_HOME to prevent
 	// parallel builds from corrupting the shared ~/.pack/volume-keys.toml.
@@ -118,7 +146,7 @@ func RunFuncDeploy(functionDir string, optFns ...FuncDeployOption) (string, erro
 				return "", err
 			}
 		} else {
-			funcBinary = "func"
+			funcBinary = funcBin()
 		}
 
 		cmd := exec.Command(funcBinary, append([]string{"deploy"}, args...)...)
@@ -143,6 +171,10 @@ type FuncDeployOptions struct {
 	Deployer         string
 	CliVersion       string
 	EnvVars          map[string]string
+	// Image, when set to a ref including a digest, makes func deploy the given
+	// pre-built image and skip the build/push phases. Used to seed a function
+	// with a specific (e.g. stale-middleware) image.
+	Image string
 }
 
 type FuncDeployOption func(*FuncDeployOptions)
@@ -162,6 +194,14 @@ func WithBuilder(builder string) FuncDeployOption {
 func WithDeployer(deployer string) FuncDeployOption {
 	return func(o *FuncDeployOptions) {
 		o.Deployer = deployer
+	}
+}
+
+// WithImage deploys a pre-built image (ref should include a digest so func skips
+// build/push), rather than building from source.
+func WithImage(image string) FuncDeployOption {
+	return func(o *FuncDeployOptions) {
+		o.Image = image
 	}
 }
 
@@ -211,7 +251,7 @@ func ensureFuncVersion(version string) (string, error) {
 	}
 	defer syscall.Flock(int(lockFile.Fd()), syscall.LOCK_UN) //nolint:errcheck
 
-	// Re-check after acquiring the lock — another process may have finished the download
+	// Re-check after acquiring the lock - another process may have finished the download
 	if _, err := os.Stat(funcBinary); err == nil {
 		return funcBinary, nil
 	}
