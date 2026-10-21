@@ -215,6 +215,9 @@ func (m *managerImpl) Deploy(ctx context.Context, repoPath string, namespace str
 		"deploy",
 		"--remote",
 		"--namespace", namespace,
+		// The operator owns the Function CR it deploys from: func must not create
+		// it or rewrite its spec after the deploy
+		"--management-disabled",
 	}
 
 	if opts.RegistryAuthFile != "" {
