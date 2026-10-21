@@ -180,3 +180,5 @@ require (
 )
 
 replace github.com/functions-dev/func-operator/api => ./api
+
+replace github.com/prometheus/common v1.20.99 => github.com/prometheus/common v0.72.0
