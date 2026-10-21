@@ -2,10 +2,10 @@ version: 2
 updates:
   # Enable version updates for Go modules
   - package-ecosystem: "gomod"
-    # api/ is a separate Go module with its own go.mod
-    directories:
-      - "/"
-      - "/api"
+    # api/ is a separate Go module, left out on purpose: its go.mod sets the
+    # lowest k8s.io versions that importers such as knative/func must use.
+    # Raise them by hand, only when the types need a newer Kubernetes API.
+    directory: "/"
     schedule:
       interval: "daily"
     open-pull-requests-limit: 10
@@ -23,6 +23,13 @@ updates:
       # tags such as v0.50.3 sort higher but lack it, so updates would break the
       # build. Remove once a func release includes #4064.
       - dependency-name: "knative.dev/func"
+      # The operator follows the Kubernetes version of the knative stack
+      # (knative.dev/pkg, serving, eventing, func): take only patch updates and
+      # raise the minor version by hand once knative has moved.
+      - dependency-name: "k8s.io/*"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
+      - dependency-name: "sigs.k8s.io/controller-runtime"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
 
   # Enable version updates for GitHub Actions
   - package-ecosystem: "github-actions"
