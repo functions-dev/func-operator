@@ -17,7 +17,7 @@ require (
 	github.com/onsi/gomega v1.44.0
 	github.com/prometheus/client_golang v1.25.0
 	github.com/stretchr/testify v1.12.1
-	github.com/xdg-go/scram v1.2.0
+	github.com/xdg-go/scram v1.4.0
 	golang.org/x/crypto v0.58.0
 	gopkg.in/yaml.v3 v3.0.1
 	k8s.io/api v0.36.6
@@ -130,7 +130,6 @@ require (
 	github.com/vbatts/tar-split v0.12.2 // indirect
 	github.com/x448/float16 v0.8.4 // indirect
 	github.com/xanzy/ssh-agent v0.3.3 // indirect
-	github.com/xdg-go/pbkdf2 v1.0.0 // indirect
 	github.com/xdg-go/stringprep v1.0.4 // indirect
 	go.opentelemetry.io/auto/sdk v1.2.1 // indirect
 	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.70.0 // indirect
